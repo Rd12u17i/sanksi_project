@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS untuk merapatkan layout, metrik, dan input
+# Custom CSS
 st.markdown("""
 <style>
     /* 1. Memangkas ruang kosong di bagian paling atas layar */
@@ -46,14 +46,12 @@ st.markdown("""
     div[data-testid="stVerticalBlock"] {
         gap: 0.2rem !important;
     }
-    
-    /* Styling Container Input (Pengganti Form) */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         border-radius: 12px;
         background-color: #ffffff;
     }
 
-    /* 4. Styling Kartu Data Sanksi & Tabel */
+    /* 4. Styling Kartu Data Sanksi (HP) & Tabel (PC) */
     .stExpander {
         border: 1px solid #e1e4e8 !important;
         border-radius: 10px !important;
@@ -226,7 +224,6 @@ if menu == "Dashboard & Input" and is_admin:
         if typed_nrp in MASTER_KARYAWAN:
             st.session_state.input_nama = MASTER_KARYAWAN[typed_nrp]
 
-    # PERUBAHAN: Menggunakan st.container(border=True) sebagai pengganti st.form
     with st.container(border=True):
         col_f1, col_f2 = st.columns(2)
 
@@ -253,7 +250,6 @@ if menu == "Dashboard & Input" and is_admin:
 
             ket = st.text_input("Keterangan Tambahan")
 
-        # PERUBAHAN: Menggunakan st.button sebagai pengganti st.form_submit_button
         submitted = st.button("💾 Simpan Data Sanksi", type="primary", use_container_width=True)
 
         if submitted:
@@ -304,7 +300,7 @@ if menu == "Dashboard & Input" and is_admin:
         st.info("Belum ada data sanksi.")
 
 # -----------------------------------------------------------------------------
-# 5. HISTORY & PENCARIAN
+# 5. HISTORY & PENCARIAN (FIX TAMPILAN HP RAPI)
 # -----------------------------------------------------------------------------
 elif menu == "History & Pencarian":
     st.markdown("<h3 style='margin-top: -15px;'>🔍 History & Pencarian Sanksi</h3>", unsafe_allow_html=True)
@@ -362,6 +358,15 @@ elif menu == "History & Pencarian":
         )
         st.markdown("---")
 
+        # FUNGSI HELPER UNTUK MENGGABUNG HTML (AGAR RAPI DI HP)
+        def render_detail(icon, label, value):
+            return f"""
+            <div style='margin-bottom: 12px; line-height: 1.4;'>
+                <div style='color: #6e7781; font-size: 12px; font-weight: 600; margin-bottom: 2px;'>{icon} {label}</div>
+                <div style='color: #1f2328; font-size: 14px; font-weight: 500;'>{value}</div>
+            </div>
+            """
+
         if view_mode == "📱 Mode Kartu (HP)":
             for _, row in df_sorted.iterrows():
                 row_id = row['id']
@@ -371,30 +376,41 @@ elif menu == "History & Pencarian":
                 st_badge = row.get('status', '⚪ NON-AKTIF')
                 tgl_input = row.get('tanggal', '-')
                 
-                expander_title = f"👤 {nama_emp} | NRP: {nrp_emp}  —  [{jenis_sanksi}]  {st_badge}"
+                expander_title = f"👤 {nama_emp} (NRP: {nrp_emp}) • {st_badge}"
                 
                 with st.expander(expander_title):
                     c1, c2 = st.columns(2)
                     with c1:
-                        st.markdown(f"<div class='detail-label'>📅 Tanggal Input</div><div class='detail-value'>{tgl_input}</div>", unsafe_allow_html=True)
-                        st.markdown(f"<div class='detail-label'>⚖️ Pasal Pelanggaran</div><div class='detail-value'>{row.get('pasal', '-')}</div>", unsafe_allow_html=True)
-                        st.markdown(f"<div class='detail-label'>⏱️ Masa Sanksi (IN - OUT)</div><div class='detail-value'>{row.get('tgl_in', '-')} s/d {row.get('tgl_out', '-')}</div>", unsafe_allow_html=True)
-                        st.markdown(f"<div class='detail-label'>🏷️ Status Sanksi</div><div class='detail-value'>{st_badge}</div>", unsafe_allow_html=True)
+                        html_c1 = (
+                            render_detail("📅", "Tanggal Input", tgl_input) +
+                            render_detail("⚖️", "Pasal Pelanggaran", row.get('pasal', '-')) +
+                            render_detail("⏱️", "Masa Sanksi (IN - OUT)", f"{row.get('tgl_in', '-')} s/d {row.get('tgl_out', '-')}") +
+                            render_detail("🏷️", "Status Sanksi", st_badge)
+                        )
+                        st.markdown(html_c1, unsafe_allow_html=True)
                     
                     with c2:
-                        st.markdown(f"<div class='detail-label'>👤 PIC / Atasan</div><div class='detail-value'>{row.get('pic', '-')}</div>", unsafe_allow_html=True)
-                        st.markdown(f"<div class='detail-label'>➕ Sanksi Tambahan</div><div class='detail-value'>{row.get('sanksi_tambahan') or '-'}</div>", unsafe_allow_html=True)
-                        st.markdown(f"<div class='detail-label'>📌 Keterangan</div><div class='detail-value'>{row.get('keterangan') or '-'}</div>", unsafe_allow_html=True)
+                        html_c2 = (
+                            render_detail("💼", "Jenis Sanksi", jenis_sanksi) +
+                            render_detail("👤", "PIC / Atasan", row.get('pic', '-')) +
+                            render_detail("➕", "Sanksi Tambahan", row.get('sanksi_tambahan') or '-') +
+                            render_detail("📌", "Keterangan", row.get('keterangan') or '-')
+                        )
+                        st.markdown(html_c2, unsafe_allow_html=True)
                     
-                    st.markdown("<div class='detail-label'>⚠️ Uraian Pelanggaran:</div>", unsafe_allow_html=True)
-                    st.info(row.get('pelanggaran') or "Tidak ada uraian detail.")
+                    st.markdown(f"""
+                        <div style='margin-top: 5px; padding: 10px; background-color: #f6f8fa; border-radius: 8px; border: 1px solid #d0d7de;'>
+                            <div style='color: #6e7781; font-size: 12px; font-weight: 600; margin-bottom: 5px;'>⚠️ Uraian Pelanggaran:</div>
+                            <div style='color: #1f2328; font-size: 13px;'>{row.get('pelanggaran') or "Tidak ada uraian detail."}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
                     
                     if is_admin:
                         st.markdown("---")
                         col_act1, col_act2 = st.columns(2)
                         
                         with col_act1:
-                            with st.popover("✏️ Edit Data Sanksi Ini", use_container_width=True):
+                            with st.popover("✏️ Edit Data", use_container_width=True):
                                 st.subheader(f"✏️ Edit Data: {nama_emp}")
                                 with st.form(f"form_edit_card_{row_id}"):
                                     e_tgl = st.date_input("Tanggal Input", parse_date(row.get('tanggal')))
@@ -425,9 +441,9 @@ elif menu == "History & Pencarian":
                                         st.rerun()
 
                         with col_act2:
-                            with st.popover("🗑️ Hapus Data Ini", use_container_width=True):
-                                st.warning(f"Hapus permanen data sanksi **{nama_emp}**?")
-                                if st.button("🔴 Ya, Hapus Permanen", key=f"del_card_{row_id}", type="primary", use_container_width=True):
+                            with st.popover("🗑️ Hapus", use_container_width=True):
+                                st.warning(f"Hapus permanen sanksi **{nama_emp}**?")
+                                if st.button("🔴 Ya, Hapus", key=f"del_card_{row_id}", type="primary", use_container_width=True):
                                     supabase.table("sanksi").delete().eq("id", row_id).execute()
                                     st.toast(f"Data ID {row_id} berhasil dihapus!", icon="🗑️")
                                     st.rerun()
