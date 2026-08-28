@@ -4,7 +4,9 @@ from supabase import create_client, Client
 from datetime import date, datetime
 import io
 
-# Konfigurasi Halaman Modern & Mobile Responsive
+# -----------------------------------------------------------------------------
+# KONFIGURASI HALAMAN & CUSTOM CSS
+# -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="OAMS - Sistem Sanksi Karyawan",
     page_icon="📋",
@@ -12,13 +14,58 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS untuk Kerapian Tabel & Mencegah Text-Wrap
+# Custom CSS untuk merapatkan layout, metrik, dan input
 st.markdown("""
 <style>
-    /* Menjaga teks tabel tetap 1 baris (no-wrap) & border grid rapi */
-    .stDataFrame {
-        border: 1px solid #e6e8eb;
+    /* 1. Memangkas ruang kosong di bagian paling atas layar */
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+    }
+
+    /* 2. Styling Kartu Metrik: Angka lebih kecil & kotak lebih rapat */
+    div[data-testid="stMetricValue"] {
+        font-size: 1.6rem !important;
+        padding-bottom: 0px !important;
+    }
+    div[data-testid="stMetric"] {
+        background-color: #f8f9fa;
+        border: 1px solid #e1e4e8;
         border-radius: 8px;
+        padding: 8px 15px !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+        text-align: center;
+    }
+    div[data-testid="stMetricLabel"] {
+        justify-content: center;
+        font-size: 13px !important;
+        color: #57606a;
+    }
+    
+    /* 3. Merapatkan jarak vertikal antar input */
+    div[data-testid="stVerticalBlock"] {
+        gap: 0.2rem !important;
+    }
+    
+    /* Styling Container Input (Pengganti Form) */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius: 12px;
+        background-color: #ffffff;
+    }
+
+    /* 4. Styling Kartu Data Sanksi & Tabel */
+    .stExpander {
+        border: 1px solid #e1e4e8 !important;
+        border-radius: 10px !important;
+        background-color: #ffffff !important;
+        margin-bottom: 8px !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
+    }
+    div[data-testid="stDataFrame"] {
+        border-radius: 8px;
+        border: 1px solid #e1e4e8;
+        display: inline-block !important;
+        max-width: 100% !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -27,7 +74,7 @@ st.markdown("""
 # 1. KONEKSI SUPABASE
 # -----------------------------------------------------------------------------
 SUPABASE_URL = "https://zuctywyaxznjhzwckery.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1Y3R5d3lheHpuamh6d2NrZXJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5MjI1OTcsImV4cCI6MjEwMzQ5ODU5N30.14uuKR3VoXkTE48jBS2NzX57NCDMwcFtXhKkLjJKJTg"  # Ganti dengan anon key Anda
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1Y3R5d3lheHpuamh6d2NrZXJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5MjI1OTcsImV4cCI6MjEwMzQ5ODU5N30.14uuKR3VoXkTE48jBS2NzX57NCDMwcFtXhKkLjJKJTg"
 
 @st.cache_resource
 def init_supabase():
@@ -36,7 +83,7 @@ def init_supabase():
 supabase = init_supabase()
 
 # -----------------------------------------------------------------------------
-# 2. LOAD MASTER DATA (DENGAN CACHE MEMORI)
+# 2. LOAD MASTER DATA
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=300)
 def load_supabase_master():
@@ -89,7 +136,7 @@ def load_supabase_master():
 MASTER_KARYAWAN, LIST_PASAL, LIST_PIC = load_supabase_master()
 
 # -----------------------------------------------------------------------------
-# 3. SIDEBAR (LOGGING & ROLE)
+# 3. SIDEBAR
 # -----------------------------------------------------------------------------
 st.sidebar.title("🔐 OAMS System")
 role = st.sidebar.radio("Akses Sebagai:", ["User (Read-Only)", "Admin"])
@@ -104,7 +151,12 @@ if role == "Admin":
         st.sidebar.error("❌ Password Salah!")
 
 st.sidebar.markdown("---")
-menu_options = ["Dashboard", "Input Sanksi", "History & Pencarian"] if is_admin else ["History & Pencarian"]
+
+if is_admin:
+    menu_options = ["Dashboard & Input", "History & Pencarian"]
+else:
+    menu_options = ["History & Pencarian"]
+
 menu = st.sidebar.radio("Menu Utama", menu_options)
 
 def parse_date(date_str):
@@ -115,12 +167,27 @@ def parse_date(date_str):
     except Exception:
         return date.today()
 
+COLUMN_CONFIG_TABLE = {
+    "tanggal": st.column_config.TextColumn("Tanggal Input", width=110),
+    "nrp": st.column_config.TextColumn("NRP", width=90),
+    "nama": st.column_config.TextColumn("Nama Karyawan", width=160),
+    "pasal": st.column_config.TextColumn("Pasal Pelanggaran", width=150),
+    "sanksi": st.column_config.TextColumn("Jenis Sanksi", width=160),
+    "tgl_in": st.column_config.TextColumn("Tgl IN", width=100),
+    "tgl_out": st.column_config.TextColumn("Tgl OUT", width=100),
+    "status": st.column_config.TextColumn("Status", width=110),
+    "sanksi_tambahan": st.column_config.TextColumn("Sanksi Tambahan", width=140),
+    "pelanggaran": st.column_config.TextColumn("Uraian Pelanggaran", width=220),
+    "pic": st.column_config.TextColumn("PIC / Atasan", width=140),
+    "keterangan": st.column_config.TextColumn("Keterangan", width=160)
+}
+
 # -----------------------------------------------------------------------------
-# 4. DASHBOARD (Rapi Bergaris, Tanpa ID & Indeks Nomor)
+# 4. DASHBOARD & INPUT SANKSI
 # -----------------------------------------------------------------------------
-if menu == "Dashboard" and is_admin:
-    st.title("📊 Dashboard Sanksi Karyawan")
-    st.caption("Ringkasan data sanksi secara real-time dari Supabase.")
+if menu == "Dashboard & Input" and is_admin:
+    
+    st.markdown("<h3 style='margin-top: -15px; margin-bottom: 10px;'>📊 Dashboard & Kelola Sanksi</h3>", unsafe_allow_html=True)
     
     res = supabase.table("sanksi").select("*").execute()
     df = pd.DataFrame(res.data)
@@ -136,23 +203,8 @@ if menu == "Dashboard" and is_admin:
     col3.metric("Total SP1", sp1_count)
     col4.metric("Personal Kontak", pk_count)
     
-    st.markdown("---")
-    st.subheader("📋 5 Record Terbaru")
-    if not df.empty:
-        # Hapus kolom id dan created_at dari tampilan dashboard
-        df_dash = df.sort_values(by="id", ascending=False).head(5)
-        df_dash_clean = df_dash.drop(columns=['id', 'created_at'], errors='ignore')
-        
-        # Tampilkan tabel bergaris tanpa indeks nomor
-        st.dataframe(df_dash_clean, use_container_width=True, hide_index=True)
-    else:
-        st.info("Belum ada data sanksi.")
-
-# -----------------------------------------------------------------------------
-# 5. FORM INPUT SANKSI (Khusus Admin)
-# -----------------------------------------------------------------------------
-elif menu == "Input Sanksi" and is_admin:
-    st.title("📝 Form Input Sanksi Karyawan")
+    st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
+    st.markdown("<h4 style='margin-bottom: 10px;'>📝 Form Input Sanksi Baru</h4>", unsafe_allow_html=True)
     
     if st.session_state.get("should_reset", False):
         st.session_state.input_nama = ""
@@ -174,81 +226,95 @@ elif menu == "Input Sanksi" and is_admin:
         if typed_nrp in MASTER_KARYAWAN:
             st.session_state.input_nama = MASTER_KARYAWAN[typed_nrp]
 
-    col1, col2 = st.columns(2)
+    # PERUBAHAN: Menggunakan st.container(border=True) sebagai pengganti st.form
+    with st.container(border=True):
+        col_f1, col_f2 = st.columns(2)
 
-    with col1:
-        tgl = st.date_input("Tanggal Input", date.today())
-        nrp = st.text_input("NRP Karyawan", key="input_nrp", on_change=auto_fill_nama, placeholder="Ketik NRP lalu tekan Enter...")
-        nama = st.text_input("Nama Karyawan", key="input_nama", placeholder="Terisi otomatis jika NRP ada di master...")
-        
-        pasal_options = [""] + LIST_PASAL + ["+ Ketik Pasal Baru..."]
-        selected_pasal = st.selectbox("Pasal Pelanggaran (Ketik untuk filter)", options=pasal_options)
-        pasal = st.text_input("Ketik Pasal Baru") if selected_pasal == "+ Ketik Pasal Baru..." else selected_pasal
+        with col_f1:
+            tgl = st.date_input("Tanggal Input", date.today())
+            nrp = st.text_input("NRP Karyawan", key="input_nrp", on_change=auto_fill_nama, placeholder="Ketik NRP lalu tekan Enter...")
+            nama = st.text_input("Nama Karyawan", key="input_nama", placeholder="Terisi otomatis jika NRP ada di master...")
+            
+            pasal_options = [""] + LIST_PASAL + ["+ Ketik Pasal Baru..."]
+            selected_pasal = st.selectbox("Pasal Pelanggaran", options=pasal_options)
+            pasal = st.text_input("Ketik Pasal Baru") if selected_pasal == "+ Ketik Pasal Baru..." else selected_pasal
 
-        sanksi = st.selectbox("Jenis Sanksi", ["PERSONAL KONTAK", "PERINGATAN TERTULIS", "SP1", "SP2", "SP3", "DIKEMBALIKAN KE HC"])
-        tgl_in = st.date_input("Tanggal IN (Mulai Sanksi)", date.today())
+            sanksi = st.selectbox("Jenis Sanksi", ["PERSONAL KONTAK", "PERINGATAN TERTULIS", "SP1", "SP2", "SP3", "DIKEMBALIKAN KE HC"])
+            tgl_in = st.date_input("Tanggal IN (Mulai Sanksi)", date.today())
 
-    with col2:
-        tgl_out = st.date_input("Tanggal OUT (Selesai Sanksi)", date.today())
-        sanksi_tambahan = st.text_input("Sanksi Tambahan", placeholder="Opsional")
-        pelanggaran = st.text_area("Uraian Pelanggaran")
+        with col_f2:
+            tgl_out = st.date_input("Tanggal OUT (Selesai Sanksi)", date.today())
+            sanksi_tambahan = st.text_input("Sanksi Tambahan", placeholder="Opsional")
+            pelanggaran = st.text_area("Uraian Pelanggaran")
 
-        pic_options = [""] + LIST_PIC + ["+ Ketik PIC Baru..."]
-        selected_pic = st.selectbox("PIC / Atasan (Ketik untuk filter)", options=pic_options)
-        pic = st.text_input("Ketik PIC Baru") if selected_pic == "+ Ketik PIC Baru..." else selected_pic
+            pic_options = [""] + LIST_PIC + ["+ Ketik PIC Baru..."]
+            selected_pic = st.selectbox("PIC / Atasan", options=pic_options)
+            pic = st.text_input("Ketik PIC Baru") if selected_pic == "+ Ketik PIC Baru..." else selected_pic
 
-        ket = st.text_input("Keterangan Tambahan")
+            ket = st.text_input("Keterangan Tambahan")
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    submitted = st.button("💾 Simpan Data Sanksi", type="primary", use_container_width=True)
+        # PERUBAHAN: Menggunakan st.button sebagai pengganti st.form_submit_button
+        submitted = st.button("💾 Simpan Data Sanksi", type="primary", use_container_width=True)
 
-    if submitted:
-        if not nrp or not nama:
-            st.session_state.notif_error = "NRP dan Nama Karyawan wajib diisi!"
-            st.rerun()
-        else:
-            payload = {
-                "tanggal": str(tgl), "nrp": nrp, "nama": nama, "pasal": pasal,
-                "sanksi": sanksi, "tgl_in": str(tgl_in), "tgl_out": str(tgl_out),
-                "sanksi_tambahan": sanksi_tambahan, "pelanggaran": pelanggaran,
-                "pic": pic, "keterangan": ket
-            }
-            supabase.table("sanksi").insert(payload).execute()
+        if submitted:
+            if not nrp or not nama:
+                st.session_state.notif_error = "NRP dan Nama Karyawan wajib diisi!"
+                st.rerun()
+            else:
+                payload = {
+                    "tanggal": str(tgl), "nrp": nrp, "nama": nama, "pasal": pasal,
+                    "sanksi": sanksi, "tgl_in": str(tgl_in), "tgl_out": str(tgl_out),
+                    "sanksi_tambahan": sanksi_tambahan, "pelanggaran": pelanggaran,
+                    "pic": pic, "keterangan": ket
+                }
+                supabase.table("sanksi").insert(payload).execute()
 
-            is_new_master = False
-            try:
-                if nrp not in MASTER_KARYAWAN:
-                    supabase.table("master_karyawan").insert({"nrp": nrp, "nama": nama}).execute()
-                    is_new_master = True
-                if selected_pasal == "+ Ketik Pasal Baru..." and pasal:
-                    supabase.table("master_pasal").insert({"pasal": pasal}).execute()
-                    is_new_master = True
-                if selected_pic == "+ Ketik PIC Baru..." and pic:
-                    supabase.table("master_pic").insert({"nama_pic": pic}).execute()
-                    is_new_master = True
-            except Exception:
-                pass
+                is_new_master = False
+                try:
+                    if nrp not in MASTER_KARYAWAN:
+                        supabase.table("master_karyawan").insert({"nrp": nrp, "nama": nama}).execute()
+                        is_new_master = True
+                    if selected_pasal == "+ Ketik Pasal Baru..." and pasal:
+                        supabase.table("master_pasal").insert({"pasal": pasal}).execute()
+                        is_new_master = True
+                    if selected_pic == "+ Ketik PIC Baru..." and pic:
+                        supabase.table("master_pic").insert({"nama_pic": pic}).execute()
+                        is_new_master = True
+                except Exception:
+                    pass
 
-            if is_new_master:
-                st.cache_data.clear()
+                if is_new_master:
+                    st.cache_data.clear()
 
-            st.session_state.should_reset = True
-            st.session_state.notif_success = f"Berhasil menyimpan sanksi untuk {nama} ({nrp})!"
-            st.rerun()
+                st.session_state.should_reset = True
+                st.session_state.notif_success = f"Berhasil menyimpan sanksi untuk {nama} ({nrp})!"
+                st.rerun()
+    
+    st.markdown("<h4 style='margin-top: 15px; margin-bottom: 5px;'>📋 5 Record Terbaru</h4>", unsafe_allow_html=True)
+    if not df.empty:
+        df_dash = df.sort_values(by="id", ascending=False).head(5)
+        df_dash_clean = df_dash.drop(columns=['id', 'created_at'], errors='ignore')
+        st.dataframe(
+            df_dash_clean,
+            use_container_width=False,
+            hide_index=True,
+            column_config=COLUMN_CONFIG_TABLE
+        )
+    else:
+        st.info("Belum ada data sanksi.")
 
 # -----------------------------------------------------------------------------
-# 6. HISTORY & PENCARIAN (User & Admin - Tombol Ringkas Mengikuti Tinggi Sel)
+# 5. HISTORY & PENCARIAN
 # -----------------------------------------------------------------------------
 elif menu == "History & Pencarian":
-    st.title("🔍 History & Pencarian Sanksi")
+    st.markdown("<h3 style='margin-top: -15px;'>🔍 History & Pencarian Sanksi</h3>", unsafe_allow_html=True)
     
     res = supabase.table("sanksi").select("*").execute()
     df = pd.DataFrame(res.data)
     
-    search_query = st.text_input("🔎 Cari berdasarkan NRP atau Nama Karyawan:")
+    search_query = st.text_input("🔎 Cari berdasarkan NRP atau Nama Karyawan:", placeholder="Ketik nama atau NRP...")
     
     if not df.empty:
-        # 1. Hitung Status Otomatis
         today_date = date.today()
         
         def calculate_status(tgl_out_val):
@@ -260,7 +326,6 @@ elif menu == "History & Pencarian":
 
         df['status'] = df['tgl_out'].apply(calculate_status)
 
-        # 2. Filter Pencarian
         if search_query:
             df_filtered = df[
                 df['nrp'].astype(str).str.contains(search_query, case=False, na=False) | 
@@ -270,9 +335,13 @@ elif menu == "History & Pencarian":
             df_filtered = df
 
         df_sorted = df_filtered.sort_values(by="id", ascending=False)
-        st.write(f"Total data ditemukan: **{len(df_filtered)}** baris")
+        
+        col_top1, col_top2 = st.columns([2, 1])
+        with col_top1:
+            st.write(f"Total data ditemukan: **{len(df_filtered)}** baris")
+        with col_top2:
+            view_mode = st.radio("Mode Tampilan:", ["📱 Mode Kartu (HP)", "💻 Mode Tabel (PC)"], horizontal=True)
 
-        # 3. Fitur Unduh Excel
         column_order_excel = [
             'tanggal', 'nrp', 'nama', 'pasal', 'sanksi', 
             'tgl_in', 'tgl_out', 'status', 'sanksi_tambahan', 
@@ -288,168 +357,169 @@ elif menu == "History & Pencarian":
             label="📥 Download Data Terupdate ke Excel",
             data=buffer.getvalue(),
             file_name=f"Data_Sanksi_{date.today()}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
         )
         st.markdown("---")
 
-        # 4. CSS KHUSUS UNTUK MEMAKSA TOMBOL AKSI MENJADI KECIL & PRESISI
-        st.markdown("""
-        <style>
-            /* Menghilangkan sela antar kolom Streamlit */
-            div[data-testid="stHorizontalBlock"] {
-                gap: 0px !important;
-                align-items: center !important;
-            }
-            /* Reset margin/padding elemen turunan di dalam kolom */
-            div[data-testid="stHorizontalBlock"] div[data-testid="column"] {
-                padding: 0px !important;
-                margin: 0px !important;
-            }
-            div[data-testid="stElementContainer"] {
-                margin: 0px !important;
-                padding: 0px !important;
-            }
-            
-            /* Styling Sel Header Tabel */
-            .tbl-hdr {
-                font-weight: bold;
-                background-color: #f8f9fa;
-                border-top: 1px solid #d0d7de;
-                border-bottom: 2px solid #d0d7de;
-                border-right: 1px solid #d0d7de;
-                font-size: 12px;
-                padding: 0px 8px;
-                white-space: nowrap;
-                height: 36px !important;
-                line-height: 36px !important;
-                box-sizing: border-box;
-                width: 100%;
-            }
-            /* Styling Sel Data Tabel (Tinggi Kunci 36px) */
-            .tbl-cell {
-                padding: 0px 8px;
-                border-bottom: 1px solid #e1e4e8;
-                border-right: 1px solid #e1e4e8;
-                font-size: 12px;
-                white-space: nowrap;
-                background-color: #ffffff;
-                height: 36px !important;
-                line-height: 36px !important;
-                box-sizing: border-box;
-                width: 100%;
-                overflow: hidden;
-                text-overflow: ellipsis;
-            }
-            /* Styling Sel Aksi Admin (Menjaga garis tabel tetap utuh) */
-            .tbl-cell-action {
-                border-bottom: 1px solid #e1e4e8;
-                border-right: 1px solid #e1e4e8;
-                height: 36px !important;
-                background-color: #ffffff;
-                box-sizing: border-box;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 0px 2px;
-            }
-
-            /* MEMAKSA TOMBOL POPOVER BERUKURAN KECIL (HEIGHT 24px) */
-            div[data-testid="stPopover"] {
-                display: flex !important;
-                justify-content: center !important;
-                align-items: center !important;
-                height: 36px !important;
-            }
-            div[data-testid="stPopover"] > button {
-                height: 24px !important;
-                min-height: 24px !important;
-                max-height: 24px !important;
-                line-height: 22px !important;
-                padding: 0px 4px !important;
-                margin: 0px !important;
-                font-size: 11px !important;
-                border-radius: 4px !important;
-                border: 1px solid #d0d7de !important;
-                background-color: #ffffff !important;
-                box-shadow: none !important;
-            }
-            div[data-testid="stPopover"] > button:hover {
-                background-color: #f3f4f6 !important;
-                border-color: #0969da !important;
-            }
-        </style>
-        """, unsafe_allow_html=True)
-
-        # 5. SKEMA DAN PROPORSI LEBAR KOLOM
-        if is_admin:
-            cols_width = [1.0, 0.9, 1.4, 1.4, 1.6, 1.0, 1.0, 1.1, 1.3, 1.4, 1.4, 1.3, 0.8]
-            headers = ['Tanggal', 'NRP', 'Nama', 'Pasal', 'Sanksi', 'Tgl IN', 'Tgl OUT', 'Status', 'Sanksi Tambahan', 'Pelanggaran', 'PIC', 'Keterangan', 'Aksi']
-        else:
-            cols_width = [1.0, 0.9, 1.4, 1.4, 1.6, 1.0, 1.0, 1.1, 1.3, 1.4, 1.4, 1.3]
-            headers = ['Tanggal', 'NRP', 'Nama', 'Pasal', 'Sanksi', 'Tgl IN', 'Tgl OUT', 'Status', 'Sanksi Tambahan', 'Pelanggaran', 'PIC', 'Keterangan']
-
-        # Render Header Tabel
-        hdr_cols = st.columns(cols_width)
-        for idx, h_text in enumerate(headers):
-            border_left = "border-left: 1px solid #d0d7de;" if idx == 0 else ""
-            hdr_cols[idx].markdown(f"<div class='tbl-hdr' style='{border_left}'>{h_text}</div>", unsafe_allow_html=True)
-
-        # Render Baris Data
-        for _, row in df_sorted.iterrows():
-            row_cols = st.columns(cols_width)
-            
-            # Render Teks Data (Sel 0 sampai 11)
-            for idx, val in enumerate([
-                row.get('tanggal', ''), row.get('nrp', ''), row.get('nama', ''),
-                row.get('pasal', ''), row.get('sanksi', ''), row.get('tgl_in', ''),
-                row.get('tgl_out', ''), row.get('status', ''), row.get('sanksi_tambahan', ''),
-                row.get('pelanggaran', ''), row.get('pic', ''), row.get('keterangan', '')
-            ]):
-                border_left = "border-left: 1px solid #e1e4e8;" if idx == 0 else ""
-                row_cols[idx].markdown(f"<div class='tbl-cell' style='{border_left}'>{val}</div>", unsafe_allow_html=True)
-
-            # Render Kolom Aksi Admin (Sel 12)
-            if is_admin:
+        if view_mode == "📱 Mode Kartu (HP)":
+            for _, row in df_sorted.iterrows():
                 row_id = row['id']
-                c_edit, c_del = row_cols[12].columns(2)
+                nama_emp = row.get('nama', '-')
+                nrp_emp = row.get('nrp', '-')
+                jenis_sanksi = row.get('sanksi', '-')
+                st_badge = row.get('status', '⚪ NON-AKTIF')
+                tgl_input = row.get('tanggal', '-')
                 
-                with c_edit:
-                    with st.popover("✏️", help="Edit Data"):
-                        st.subheader(f"✏️ Edit Data: {row.get('nama')}")
-                        with st.form(f"form_edit_{row_id}"):
-                            e_tgl = st.date_input("Tanggal Input", parse_date(row.get('tanggal')))
-                            e_nrp = st.text_input("NRP", value=str(row.get('nrp', '')))
-                            e_nama = st.text_input("Nama Karyawan", value=str(row.get('nama', '')))
-                            e_pasal = st.text_input("Pasal Pelanggaran", value=str(row.get('pasal', '')))
-                            
-                            s_list = ["PERSONAL KONTAK", "PERINGATAN TERTULIS", "SP1", "SP2", "SP3", "DIKEMBALIKAN KE HC"]
-                            curr_s = row.get('sanksi', "PERSONAL KONTAK")
-                            e_sanksi = st.selectbox("Jenis Sanksi", s_list, index=s_list.index(curr_s) if curr_s in s_list else 0)
-                            e_tgl_in = st.date_input("Tanggal IN", parse_date(row.get('tgl_in')))
-                            e_tgl_out = st.date_input("Tanggal OUT", parse_date(row.get('tgl_out')))
-                            e_sanksi_tambahan = st.text_input("Sanksi Tambahan", value=str(row.get('sanksi_tambahan', '')))
-                            e_pelanggaran = st.text_area("Uraian Pelanggaran", value=str(row.get('pelanggaran', '')))
-                            e_pic = st.text_input("PIC / Atasan", value=str(row.get('pic', '')))
-                            e_ket = st.text_input("Keterangan", value=str(row.get('keterangan', '')))
-                            
-                            if st.form_submit_button("💾 Simpan Perubahan", type="primary", use_container_width=True):
-                                upd_payload = {
-                                    "tanggal": str(e_tgl), "nrp": e_nrp, "nama": e_nama, "pasal": e_pasal,
-                                    "sanksi": e_sanksi, "tgl_in": str(e_tgl_in), "tgl_out": str(e_tgl_out),
-                                    "sanksi_tambahan": e_sanksi_tambahan, "pelanggaran": e_pelanggaran,
-                                    "pic": e_pic, "keterangan": e_ket
-                                }
-                                supabase.table("sanksi").update(upd_payload).eq("id", row_id).execute()
-                                st.toast(f"Data {e_nama} berhasil diperbarui!", icon="✅")
-                                st.rerun()
+                expander_title = f"👤 {nama_emp} | NRP: {nrp_emp}  —  [{jenis_sanksi}]  {st_badge}"
+                
+                with st.expander(expander_title):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        st.markdown(f"<div class='detail-label'>📅 Tanggal Input</div><div class='detail-value'>{tgl_input}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='detail-label'>⚖️ Pasal Pelanggaran</div><div class='detail-value'>{row.get('pasal', '-')}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='detail-label'>⏱️ Masa Sanksi (IN - OUT)</div><div class='detail-value'>{row.get('tgl_in', '-')} s/d {row.get('tgl_out', '-')}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='detail-label'>🏷️ Status Sanksi</div><div class='detail-value'>{st_badge}</div>", unsafe_allow_html=True)
+                    
+                    with c2:
+                        st.markdown(f"<div class='detail-label'>👤 PIC / Atasan</div><div class='detail-value'>{row.get('pic', '-')}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='detail-label'>➕ Sanksi Tambahan</div><div class='detail-value'>{row.get('sanksi_tambahan') or '-'}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='detail-label'>📌 Keterangan</div><div class='detail-value'>{row.get('keterangan') or '-'}</div>", unsafe_allow_html=True)
+                    
+                    st.markdown("<div class='detail-label'>⚠️ Uraian Pelanggaran:</div>", unsafe_allow_html=True)
+                    st.info(row.get('pelanggaran') or "Tidak ada uraian detail.")
+                    
+                    if is_admin:
+                        st.markdown("---")
+                        col_act1, col_act2 = st.columns(2)
+                        
+                        with col_act1:
+                            with st.popover("✏️ Edit Data Sanksi Ini", use_container_width=True):
+                                st.subheader(f"✏️ Edit Data: {nama_emp}")
+                                with st.form(f"form_edit_card_{row_id}"):
+                                    e_tgl = st.date_input("Tanggal Input", parse_date(row.get('tanggal')))
+                                    e_nrp = st.text_input("NRP", value=str(nrp_emp))
+                                    e_nama = st.text_input("Nama Karyawan", value=str(nama_emp))
+                                    e_pasal = st.text_input("Pasal Pelanggaran", value=str(row.get('pasal', '')))
+                                    
+                                    s_list = ["PERSONAL KONTAK", "PERINGATAN TERTULIS", "SP1", "SP2", "SP3", "DIKEMBALIKAN KE HC"]
+                                    curr_s = row.get('sanksi', "PERSONAL KONTAK")
+                                    e_sanksi = st.selectbox("Jenis Sanksi", s_list, index=s_list.index(curr_s) if curr_s in s_list else 0)
+                                    
+                                    e_tgl_in = st.date_input("Tanggal IN", parse_date(row.get('tgl_in')))
+                                    e_tgl_out = st.date_input("Tanggal OUT", parse_date(row.get('tgl_out')))
+                                    e_sanksi_tambahan = st.text_input("Sanksi Tambahan", value=str(row.get('sanksi_tambahan', '')))
+                                    e_pelanggaran = st.text_area("Uraian Pelanggaran", value=str(row.get('pelanggaran', '')))
+                                    e_pic = st.text_input("PIC / Atasan", value=str(row.get('pic', '')))
+                                    e_ket = st.text_input("Keterangan", value=str(row.get('keterangan', '')))
+                                    
+                                    if st.form_submit_button("💾 Simpan Perubahan", type="primary", use_container_width=True):
+                                        upd_payload = {
+                                            "tanggal": str(e_tgl), "nrp": e_nrp, "nama": e_nama, "pasal": e_pasal,
+                                            "sanksi": e_sanksi, "tgl_in": str(e_tgl_in), "tgl_out": str(e_tgl_out),
+                                            "sanksi_tambahan": e_sanksi_tambahan, "pelanggaran": e_pelanggaran,
+                                            "pic": e_pic, "keterangan": e_ket
+                                        }
+                                        supabase.table("sanksi").update(upd_payload).eq("id", row_id).execute()
+                                        st.toast(f"Data {e_nama} berhasil diperbarui!", icon="✅")
+                                        st.rerun()
 
-                with c_del:
-                    with st.popover("🗑️", help="Hapus Data"):
-                        st.warning(f"Hapus permanen sanksi **{row.get('nama')}**?")
-                        if st.button("🔴 Ya, Hapus", key=f"del_{row_id}", type="primary", use_container_width=True):
-                            supabase.table("sanksi").delete().eq("id", row_id).execute()
-                            st.toast(f"Data ID {row_id} berhasil dihapus!", icon="🗑️")
-                            st.rerun()
+                        with col_act2:
+                            with st.popover("🗑️ Hapus Data Ini", use_container_width=True):
+                                st.warning(f"Hapus permanen data sanksi **{nama_emp}**?")
+                                if st.button("🔴 Ya, Hapus Permanen", key=f"del_card_{row_id}", type="primary", use_container_width=True):
+                                    supabase.table("sanksi").delete().eq("id", row_id).execute()
+                                    st.toast(f"Data ID {row_id} berhasil dihapus!", icon="🗑️")
+                                    st.rerun()
+
+        else:
+            df_table = df_sorted.drop(columns=['id', 'created_at'], errors='ignore')
+            st.dataframe(
+                df_table,
+                use_container_width=False,
+                hide_index=True,
+                column_config=COLUMN_CONFIG_TABLE
+            )
+            
+            if is_admin:
+                st.markdown("---")
+                st.subheader("🛠️ Panel Edit / Hapus Data (Khusus Admin)")
+                st.caption("Ketik NRP atau Nama karyawan untuk menampilkan daftar riwayat data yang ingin diubah atau dihapus.")
+                
+                search_admin = st.text_input("🔎 Ketik NRP / Nama Karyawan untuk Edit / Hapus:", placeholder="Contoh: 0211002", key="search_admin_input")
+                
+                if search_admin:
+                    df_admin_target = df_sorted[
+                        df_sorted['nrp'].astype(str).str.contains(search_admin, case=False, na=False) | 
+                        df_sorted['nama'].astype(str).str.contains(search_admin, case=False, na=False)
+                    ]
+                else:
+                    df_admin_target = pd.DataFrame()
+
+                if search_admin and df_admin_target.empty:
+                    st.warning(f"Tidak ditemukan data sanksi dengan NRP / Nama: **{search_admin}**")
+                elif not search_admin:
+                    st.info("💡 Masukkan NRP atau Nama Karyawan di atas untuk memunculkan daftar opsi edit dan hapus.")
+                else:
+                    st.write(f"Ditemukan **{len(df_admin_target)}** data untuk target **{search_admin}**:")
+                    
+                    for _, row_target in df_admin_target.iterrows():
+                        target_id = row_target['id']
+                        t_nrp = row_target.get('nrp', '-')
+                        t_nama = row_target.get('nama', '-')
+                        t_sanksi = row_target.get('sanksi', '-')
+                        t_tgl = row_target.get('tanggal', '-')
+                        t_pasal = row_target.get('pasal', '-')
+                        t_status = row_target.get('status', '-')
+
+                        with st.container(border=True):
+                            c_info, c_btn_edit, c_btn_del = st.columns([6, 2, 2])
+                            
+                            with c_info:
+                                st.markdown(
+                                    f"**📅 {t_tgl}** | **NRP:** {t_nrp} - **{t_nama}** | **[{t_sanksi}]** `{t_status}`  \n"
+                                    f"<small>Pasal: {t_pasal} | PIC: {row_target.get('pic', '-')}</small>", 
+                                    unsafe_allow_html=True
+                                )
+                            
+                            with c_btn_edit:
+                                with st.popover("✏️ Edit Data", use_container_width=True):
+                                    st.subheader(f"✏️ Edit Data: {t_nama}")
+                                    with st.form(f"form_edit_panel_{target_id}"):
+                                        e_tgl = st.date_input("Tanggal Input", parse_date(row_target.get('tanggal')))
+                                        e_nrp = st.text_input("NRP", value=str(t_nrp))
+                                        e_nama = st.text_input("Nama Karyawan", value=str(t_nama))
+                                        e_pasal = st.text_input("Pasal Pelanggaran", value=str(row_target.get('pasal', '')))
+                                        
+                                        s_list = ["PERSONAL KONTAK", "PERINGATAN TERTULIS", "SP1", "SP2", "SP3", "DIKEMBALIKAN KE HC"]
+                                        curr_s = row_target.get('sanksi', "PERSONAL KONTAK")
+                                        e_sanksi = st.selectbox("Jenis Sanksi", s_list, index=s_list.index(curr_s) if curr_s in s_list else 0)
+                                        
+                                        e_tgl_in = st.date_input("Tanggal IN", parse_date(row_target.get('tgl_in')))
+                                        e_tgl_out = st.date_input("Tanggal OUT", parse_date(row_target.get('tgl_out')))
+                                        e_sanksi_tambahan = st.text_input("Sanksi Tambahan", value=str(row_target.get('sanksi_tambahan', '')))
+                                        e_pelanggaran = st.text_area("Uraian Pelanggaran", value=str(row_target.get('pelanggaran', '')))
+                                        e_pic = st.text_input("PIC / Atasan", value=str(row_target.get('pic', '')))
+                                        e_ket = st.text_input("Keterangan", value=str(row_target.get('keterangan', '')))
+                                        
+                                        if st.form_submit_button("💾 Simpan Perubahan", type="primary", use_container_width=True):
+                                            upd_payload = {
+                                                "tanggal": str(e_tgl), "nrp": e_nrp, "nama": e_nama, "pasal": e_pasal,
+                                                "sanksi": e_sanksi, "tgl_in": str(e_tgl_in), "tgl_out": str(e_tgl_out),
+                                                "sanksi_tambahan": e_sanksi_tambahan, "pelanggaran": e_pelanggaran,
+                                                "pic": e_pic, "keterangan": e_ket
+                                            }
+                                            supabase.table("sanksi").update(upd_payload).eq("id", target_id).execute()
+                                            st.toast(f"Data {e_nama} berhasil diperbarui!", icon="✅")
+                                            st.rerun()
+                                            
+                            with c_btn_del:
+                                with st.popover("🗑️ Hapus", use_container_width=True):
+                                    st.warning(f"Hapus permanen sanksi **{t_nama}** (ID: {target_id})?")
+                                    if st.button("🔴 Ya, Hapus", key=f"del_panel_{target_id}", type="primary", use_container_width=True):
+                                        supabase.table("sanksi").delete().eq("id", target_id).execute()
+                                        st.toast(f"Data ID {target_id} berhasil dihapus!", icon="🗑️")
+                                        st.rerun()
 
     else:
         st.info("Belum ada data sanksi.")
