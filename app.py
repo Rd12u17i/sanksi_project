@@ -17,13 +17,13 @@ st.set_page_config(
 # Custom CSS
 st.markdown("""
 <style>
-    /* 1. Memangkas ruang kosong di bagian paling atas layar */
+    /* Memangkas ruang kosong di bagian paling atas layar */
     .block-container {
         padding-top: 1rem !important;
         padding-bottom: 1rem !important;
     }
 
-    /* 2. Styling Kartu Metrik: Angka lebih kecil & kotak lebih rapat */
+    /* Styling Kartu Metrik: Angka lebih kecil & kotak lebih rapat */
     div[data-testid="stMetricValue"] {
         font-size: 1.6rem !important;
         padding-bottom: 0px !important;
@@ -42,7 +42,7 @@ st.markdown("""
         color: #57606a;
     }
     
-    /* 3. Merapatkan jarak vertikal antar input */
+    /* Merapatkan jarak vertikal antar input */
     div[data-testid="stVerticalBlock"] {
         gap: 0.2rem !important;
     }
@@ -51,7 +51,7 @@ st.markdown("""
         background-color: #ffffff;
     }
 
-    /* 4. Styling Kartu Data Sanksi (HP) & Tabel (PC) */
+    /* Styling Kartu Data Sanksi & Tabel */
     .stExpander {
         border: 1px solid #e1e4e8 !important;
         border-radius: 10px !important;
@@ -300,7 +300,7 @@ if menu == "Dashboard & Input" and is_admin:
         st.info("Belum ada data sanksi.")
 
 # -----------------------------------------------------------------------------
-# 5. HISTORY & PENCARIAN (FIX TAMPILAN HP RAPI)
+# 5. HISTORY & PENCARIAN (DEFAULT KE MODE TABEL / PC)
 # -----------------------------------------------------------------------------
 elif menu == "History & Pencarian":
     st.markdown("<h3 style='margin-top: -15px;'>🔍 History & Pencarian Sanksi</h3>", unsafe_allow_html=True)
@@ -336,7 +336,8 @@ elif menu == "History & Pencarian":
         with col_top1:
             st.write(f"Total data ditemukan: **{len(df_filtered)}** baris")
         with col_top2:
-            view_mode = st.radio("Mode Tampilan:", ["📱 Mode Kartu (HP)", "💻 Mode Tabel (PC)"], horizontal=True)
+            # Menggunakan index=1 agar default pertama kali terbuka langsung ke Mode Tabel (PC)
+            view_mode = st.radio("Mode Tampilan:", ["📱 Mode Kartu (HP)", "💻 Mode Tabel (PC)"], index=1, horizontal=True)
 
         column_order_excel = [
             'tanggal', 'nrp', 'nama', 'pasal', 'sanksi', 
@@ -358,7 +359,6 @@ elif menu == "History & Pencarian":
         )
         st.markdown("---")
 
-        # FUNGSI HELPER UNTUK MENGGABUNG HTML (AGAR RAPI DI HP)
         def render_detail(icon, label, value):
             return f"""
             <div style='margin-bottom: 12px; line-height: 1.4;'>
