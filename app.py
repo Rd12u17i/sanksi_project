@@ -27,7 +27,7 @@ st.markdown("""
 # 1. KONEKSI SUPABASE
 # -----------------------------------------------------------------------------
 SUPABASE_URL = "https://zuctywyaxznjhzwckery.supabase.co"
-SUPABASE_KEY = "PASTE_ANON_KEY_PANJANG_ANDA_DI_SINI"  # Ganti dengan anon key Anda
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1Y3R5d3lheHpuamh6d2NrZXJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5MjI1OTcsImV4cCI6MjEwMzQ5ODU5N30.14uuKR3VoXkTE48jBS2NzX57NCDMwcFtXhKkLjJKJTg"  # Ganti dengan anon key Anda
 
 @st.cache_resource
 def init_supabase():
