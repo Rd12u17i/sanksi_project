@@ -14,35 +14,45 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Custom CSS untuk merapatkan layout, metrik kustom, dan responsivitas tabel HP
 st.markdown("""
 <style>
-    /* Memangkas ruang kosong di bagian paling atas layar */
+    /* Menyembunyikan Header, Toolbar, dan Ikon GitHub/Fork */
+    header {visibility: hidden !important;}
+    .stAppToolbar {visibility: hidden !important;}
+    #MainMenu {visibility: hidden !important;}
+    footer {visibility: hidden !important;}
+    
+    /* 1. Memangkas ruang kosong di bagian paling atas layar */
     .block-container {
         padding-top: 1rem !important;
         padding-bottom: 1rem !important;
     }
 
-    /* Styling Kartu Metrik: Angka lebih kecil & kotak lebih rapat */
-    div[data-testid="stMetricValue"] {
-        font-size: 1.6rem !important;
-        padding-bottom: 0px !important;
-    }
-    div[data-testid="stMetric"] {
+    /* 2. Styling Kartu Statistik Kustom (Sangat Rapat & Presisi) */
+    .stat-card {
         background-color: #f8f9fa;
         border: 1px solid #e1e4e8;
         border-radius: 8px;
-        padding: 8px 15px !important;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+        padding: 10px 12px;
         text-align: center;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+        margin-bottom: 8px;
     }
-    div[data-testid="stMetricLabel"] {
-        justify-content: center;
-        font-size: 13px !important;
+    .stat-label {
+        font-size: 12px;
+        font-weight: 600;
         color: #57606a;
+        margin-bottom: 2px;
+    }
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #1f2328;
+        line-height: 1.2;
     }
     
-    /* Merapatkan jarak vertikal antar input */
+    /* 3. Merapatkan jarak vertikal antar input */
     div[data-testid="stVerticalBlock"] {
         gap: 0.2rem !important;
     }
@@ -51,19 +61,21 @@ st.markdown("""
         background-color: #ffffff;
     }
 
-    /* Styling Kartu Data Sanksi & Tabel */
+    /* 4. Optimalisasi Tabel untuk Layar HP (Responsive Scroll & Fit) */
+    div[data-testid="stDataFrame"] {
+        width: 100% !important;
+        border-radius: 8px;
+        border: 1px solid #e1e4e8;
+        overflow-x: auto !important;
+    }
+
+    /* Styling Kartu Expandable HP */
     .stExpander {
         border: 1px solid #e1e4e8 !important;
         border-radius: 10px !important;
         background-color: #ffffff !important;
         margin-bottom: 8px !important;
         box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
-    }
-    div[data-testid="stDataFrame"] {
-        border-radius: 8px;
-        border: 1px solid #e1e4e8;
-        display: inline-block !important;
-        max-width: 100% !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -72,7 +84,7 @@ st.markdown("""
 # 1. KONEKSI SUPABASE
 # -----------------------------------------------------------------------------
 SUPABASE_URL = "https://zuctywyaxznjhzwckery.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1Y3R5d3lheHpuamh6d2NrZXJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5MjI1OTcsImV4cCI6MjEwMzQ5ODU5N30.14uuKR3VoXkTE48jBS2NzX57NCDMwcFtXhKkLjJKJTg"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1Y3R5d3lheHpuamh6d2NrZXJ5Iiwicm9sZSI6ImFub24iOjE3ODc5MjI1OTcsImV4cCI6MjEwMzQ5ODU5N30.14uuKR3VoXkTE48jBS2NzX57NCDMwcFtXhKkLjJKJTg"
 
 @st.cache_resource
 def init_supabase():
@@ -165,14 +177,15 @@ def parse_date(date_str):
     except Exception:
         return date.today()
 
+# CONFIG TABEL PRESISI DENGAN PENGATURAN LEBAR IDEAL LAPTOP & HP
 COLUMN_CONFIG_TABLE = {
     "tanggal": st.column_config.TextColumn("Tanggal Input", width=110),
-    "nrp": st.column_config.TextColumn("NRP", width=90),
-    "nama": st.column_config.TextColumn("Nama Karyawan", width=160),
+    "nrp": st.column_config.TextColumn("NRP", width=95),
+    "nama": st.column_config.TextColumn("Nama Karyawan", width=170),
     "pasal": st.column_config.TextColumn("Pasal Pelanggaran", width=150),
     "sanksi": st.column_config.TextColumn("Jenis Sanksi", width=160),
-    "tgl_in": st.column_config.TextColumn("Tgl IN", width=100),
-    "tgl_out": st.column_config.TextColumn("Tgl OUT", width=100),
+    "tgl_in": st.column_config.TextColumn("Tgl IN", width=105),
+    "tgl_out": st.column_config.TextColumn("Tgl OUT", width=105),
     "status": st.column_config.TextColumn("Status", width=110),
     "sanksi_tambahan": st.column_config.TextColumn("Sanksi Tambahan", width=140),
     "pelanggaran": st.column_config.TextColumn("Uraian Pelanggaran", width=220),
@@ -190,18 +203,23 @@ if menu == "Dashboard & Input" and is_admin:
     res = supabase.table("sanksi").select("*").execute()
     df = pd.DataFrame(res.data)
     
-    col1, col2, col3, col4 = st.columns(4)
     total_data = len(df) if not df.empty else 0
     sp3_count = len(df[df['sanksi'] == 'SP3']) if not df.empty and 'sanksi' in df.columns else 0
     sp1_count = len(df[df['sanksi'] == 'SP1']) if not df.empty and 'sanksi' in df.columns else 0
     pk_count = len(df[df['sanksi'] == 'PERSONAL KONTAK']) if not df.empty and 'sanksi' in df.columns else 0
     
-    col1.metric("Total Sanksi", total_data)
-    col2.metric("Total SP3", sp3_count)
-    col3.metric("Total SP1", sp1_count)
-    col4.metric("Personal Kontak", pk_count)
+    # RENDER KARTU STATISTIK KUSTOM
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.markdown(f"""<div class='stat-card'><div class='stat-label'>Total Sanksi</div><div class='stat-value'>{total_data}</div></div>""", unsafe_allow_html=True)
+    with col2:
+        st.markdown(f"""<div class='stat-card'><div class='stat-label'>Total SP3</div><div class='stat-value'>{sp3_count}</div></div>""", unsafe_allow_html=True)
+    with col3:
+        st.markdown(f"""<div class='stat-card'><div class='stat-label'>Total SP1</div><div class='stat-value'>{sp1_count}</div></div>""", unsafe_allow_html=True)
+    with col4:
+        st.markdown(f"""<div class='stat-card'><div class='stat-label'>Personal Kontak</div><div class='stat-value'>{pk_count}</div></div>""", unsafe_allow_html=True)
     
-    st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
+    st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
     st.markdown("<h4 style='margin-bottom: 10px;'>📝 Form Input Sanksi Baru</h4>", unsafe_allow_html=True)
     
     if st.session_state.get("should_reset", False):
@@ -292,7 +310,7 @@ if menu == "Dashboard & Input" and is_admin:
         df_dash_clean = df_dash.drop(columns=['id', 'created_at'], errors='ignore')
         st.dataframe(
             df_dash_clean,
-            use_container_width=False,
+            use_container_width=True,
             hide_index=True,
             column_config=COLUMN_CONFIG_TABLE
         )
@@ -300,7 +318,7 @@ if menu == "Dashboard & Input" and is_admin:
         st.info("Belum ada data sanksi.")
 
 # -----------------------------------------------------------------------------
-# 5. HISTORY & PENCARIAN (DEFAULT KE MODE TABEL / PC)
+# 5. HISTORY & PENCARIAN
 # -----------------------------------------------------------------------------
 elif menu == "History & Pencarian":
     st.markdown("<h3 style='margin-top: -15px;'>🔍 History & Pencarian Sanksi</h3>", unsafe_allow_html=True)
@@ -336,7 +354,7 @@ elif menu == "History & Pencarian":
         with col_top1:
             st.write(f"Total data ditemukan: **{len(df_filtered)}** baris")
         with col_top2:
-            # Menggunakan index=1 agar default pertama kali terbuka langsung ke Mode Tabel (PC)
+            # Mengatur index=1 agar 'Mode Tabel (PC)' menjadi pilihan PRIORITAS AWAL saat halaman dibuka
             view_mode = st.radio("Mode Tampilan:", ["📱 Mode Kartu (HP)", "💻 Mode Tabel (PC)"], index=1, horizontal=True)
 
         column_order_excel = [
@@ -367,6 +385,7 @@ elif menu == "History & Pencarian":
             </div>
             """
 
+        # MODE KARTU (OPSIONAL BAGI USER HP)
         if view_mode == "📱 Mode Kartu (HP)":
             for _, row in df_sorted.iterrows():
                 row_id = row['id']
@@ -448,11 +467,12 @@ elif menu == "History & Pencarian":
                                     st.toast(f"Data ID {row_id} berhasil dihapus!", icon="🗑️")
                                     st.rerun()
 
+        # MODE TABEL (DEFAULT UTAMA UNTUK PC MAUPUN HP DENGAN HORIZONTAL SCROLL RAPI)
         else:
             df_table = df_sorted.drop(columns=['id', 'created_at'], errors='ignore')
             st.dataframe(
                 df_table,
-                use_container_width=False,
+                use_container_width=True,
                 hide_index=True,
                 column_config=COLUMN_CONFIG_TABLE
             )
