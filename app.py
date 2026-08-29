@@ -14,10 +14,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS untuk merapatkan layout, metrik kustom, dan responsivitas tabel HP
+# Custom CSS untuk merapatkan layout, metrik kustom, tabel full presisi, dan hide toolbar
 st.markdown("""
 <style>
-    /* Menyembunyikan Header, Toolbar, dan Ikon GitHub/Fork */
+    /* Menyembunyikan Header, Toolbar Web, dan Ikon GitHub/Fork */
     header {visibility: hidden !important;}
     .stAppToolbar {visibility: hidden !important;}
     #MainMenu {visibility: hidden !important;}
@@ -61,21 +61,24 @@ st.markdown("""
         background-color: #ffffff;
     }
 
-    /* 4. Optimalisasi Tabel untuk Layar HP (Responsive Scroll & Fit) */
+    /* 4. Memaksa Tabel Auto-Size & Fit Layar HP/PC Tanpa Horizontal Scroll */
     div[data-testid="stDataFrame"] {
         width: 100% !important;
         border-radius: 8px;
         border: 1px solid #e1e4e8;
-        overflow-x: auto !important;
     }
-
-    /* Styling Kartu Expandable HP */
-    .stExpander {
-        border: 1px solid #e1e4e8 !important;
-        border-radius: 10px !important;
-        background-color: #ffffff !important;
-        margin-bottom: 8px !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
+    div[data-testid="stDataFrame"] > div {
+        width: 100% !important;
+    }
+    
+    /* 5. MENYEMBUNYIKAN Toolbar Bawaan Tabel (Download, Search, Fullscreen) SEPENUHNYA */
+    div[data-testid="stElementToolbar"] {
+        display: none !important;
+    }
+    
+    /* Memastikan dropdown pagination tampil di atas elemen lain (tidak tenggelam oleh tabel) */
+    div[data-baseweb="select"] {
+        z-index: 9999 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -177,20 +180,20 @@ def parse_date(date_str):
     except Exception:
         return date.today()
 
-# CONFIG TABEL PRESISI DENGAN PENGATURAN LEBAR IDEAL LAPTOP & HP
+# KONFIGURASI KOLOM: Width dilepas (auto) agar tabel bisa mengecil otomatis menyesuaikan layar (HP/PC)
 COLUMN_CONFIG_TABLE = {
-    "tanggal": st.column_config.TextColumn("Tanggal Input", width=110),
-    "nrp": st.column_config.TextColumn("NRP", width=95),
-    "nama": st.column_config.TextColumn("Nama Karyawan", width=170),
-    "pasal": st.column_config.TextColumn("Pasal Pelanggaran", width=150),
-    "sanksi": st.column_config.TextColumn("Jenis Sanksi", width=160),
-    "tgl_in": st.column_config.TextColumn("Tgl IN", width=105),
-    "tgl_out": st.column_config.TextColumn("Tgl OUT", width=105),
-    "status": st.column_config.TextColumn("Status", width=110),
-    "sanksi_tambahan": st.column_config.TextColumn("Sanksi Tambahan", width=140),
-    "pelanggaran": st.column_config.TextColumn("Uraian Pelanggaran", width=220),
-    "pic": st.column_config.TextColumn("PIC / Atasan", width=140),
-    "keterangan": st.column_config.TextColumn("Keterangan", width=160)
+    "tanggal": st.column_config.TextColumn("Tanggal Input"),
+    "nrp": st.column_config.TextColumn("NRP"),
+    "nama": st.column_config.TextColumn("Nama Karyawan"),
+    "pasal": st.column_config.TextColumn("Pasal Pelanggaran"),
+    "sanksi": st.column_config.TextColumn("Jenis Sanksi"),
+    "tgl_in": st.column_config.TextColumn("Tgl IN"),
+    "tgl_out": st.column_config.TextColumn("Tgl OUT"),
+    "status": st.column_config.TextColumn("Status"),
+    "sanksi_tambahan": st.column_config.TextColumn("Sanksi Tambahan"),
+    "pelanggaran": st.column_config.TextColumn("Uraian Pelanggaran"),
+    "pic": st.column_config.TextColumn("PIC / Atasan"),
+    "keterangan": st.column_config.TextColumn("Keterangan")
 }
 
 # -----------------------------------------------------------------------------
@@ -208,7 +211,7 @@ if menu == "Dashboard & Input" and is_admin:
     sp1_count = len(df[df['sanksi'] == 'SP1']) if not df.empty and 'sanksi' in df.columns else 0
     pk_count = len(df[df['sanksi'] == 'PERSONAL KONTAK']) if not df.empty and 'sanksi' in df.columns else 0
     
-    # RENDER KARTU STATISTIK KUSTOM
+    # RENDER KARTU STATISTIK
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.markdown(f"""<div class='stat-card'><div class='stat-label'>Total Sanksi</div><div class='stat-value'>{total_data}</div></div>""", unsafe_allow_html=True)
@@ -318,7 +321,7 @@ if menu == "Dashboard & Input" and is_admin:
         st.info("Belum ada data sanksi.")
 
 # -----------------------------------------------------------------------------
-# 5. HISTORY & PENCARIAN
+# 5. HISTORY & PENCARIAN (FITUR PAGINATION & TABEL FULL)
 # -----------------------------------------------------------------------------
 elif menu == "History & Pencarian":
     st.markdown("<h3 style='margin-top: -15px;'>🔍 History & Pencarian Sanksi</h3>", unsafe_allow_html=True)
@@ -326,7 +329,15 @@ elif menu == "History & Pencarian":
     res = supabase.table("sanksi").select("*").execute()
     df = pd.DataFrame(res.data)
     
+    # Manajemen Pencarian (Mereset Pagination jika pencarian berubah)
+    if "last_search" not in st.session_state:
+        st.session_state.last_search = ""
+        
     search_query = st.text_input("🔎 Cari berdasarkan NRP atau Nama Karyawan:", placeholder="Ketik nama atau NRP...")
+    
+    if search_query != st.session_state.last_search:
+        st.session_state.current_page = 0
+        st.session_state.last_search = search_query
     
     if not df.empty:
         today_date = date.today()
@@ -349,14 +360,11 @@ elif menu == "History & Pencarian":
             df_filtered = df
 
         df_sorted = df_filtered.sort_values(by="id", ascending=False)
+        total_rows = len(df_sorted)
         
-        col_top1, col_top2 = st.columns([2, 1])
-        with col_top1:
-            st.write(f"Total data ditemukan: **{len(df_filtered)}** baris")
-        with col_top2:
-            # Mengatur index=1 agar 'Mode Tabel (PC)' menjadi pilihan PRIORITAS AWAL saat halaman dibuka
-            view_mode = st.radio("Mode Tampilan:", ["📱 Mode Kartu (HP)", "💻 Mode Tabel (PC)"], index=1, horizontal=True)
+        st.write(f"Total data ditemukan: **{total_rows}** baris")
 
+        # Tombol Download Excel
         column_order_excel = [
             'tanggal', 'nrp', 'nama', 'pasal', 'sanksi', 
             'tgl_in', 'tgl_out', 'status', 'sanksi_tambahan', 
@@ -377,76 +385,121 @@ elif menu == "History & Pencarian":
         )
         st.markdown("---")
 
-        def render_detail(icon, label, value):
-            return f"""
-            <div style='margin-bottom: 12px; line-height: 1.4;'>
-                <div style='color: #6e7781; font-size: 12px; font-weight: 600; margin-bottom: 2px;'>{icon} {label}</div>
-                <div style='color: #1f2328; font-size: 14px; font-weight: 500;'>{value}</div>
-            </div>
-            """
+        # =====================================================================
+        # LOGIKA PAGINATION (10, 50, 100, ALL)
+        # =====================================================================
+        if "current_page" not in st.session_state:
+            st.session_state.current_page = 0
+            
+        page_options = [10, 50, 100, "All"]
+        
+        col_p1, col_p2 = st.columns([1, 3])
+        with col_p1:
+            selected_size = st.selectbox("Tampilkan baris:", page_options, index=0)
+            
+        page_size_val = total_rows if selected_size == "All" else int(selected_size)
+        
+        # Kalkulasi Total Halaman
+        if total_rows == 0:
+            total_pages = 1
+        else:
+            total_pages = (total_rows - 1) // page_size_val + 1 if page_size_val > 0 else 1
+            
+        # Keamanan agar halaman tidak melebihi batas (out of bounds)
+        if st.session_state.current_page >= total_pages:
+            st.session_state.current_page = 0
+            
+        # Pemotongan Dataframe (Slicing) berdasarkan halaman saat ini
+        start_idx = st.session_state.current_page * page_size_val
+        end_idx = start_idx + page_size_val
+        df_display = df_sorted.iloc[start_idx:end_idx]
 
-        # MODE KARTU (OPSIONAL BAGI USER HP)
-        if view_mode == "📱 Mode Kartu (HP)":
-            for _, row in df_sorted.iterrows():
-                row_id = row['id']
-                nama_emp = row.get('nama', '-')
-                nrp_emp = row.get('nrp', '-')
-                jenis_sanksi = row.get('sanksi', '-')
-                st_badge = row.get('status', '⚪ NON-AKTIF')
-                tgl_input = row.get('tanggal', '-')
+        # RENDER TABEL (FULL RESPONSIVE LAYAR HP & PC)
+        df_table = df_display.drop(columns=['id', 'created_at'], errors='ignore')
+        st.dataframe(
+            df_table,
+            use_container_width=True, # Tabel auto-compress menyesuaikan batas tepi kiri & kanan layer
+            hide_index=True,
+            column_config=COLUMN_CONFIG_TABLE
+        )
+        
+        # RENDER TOMBOL BACK & NEXT (Jika mode BUKAN 'All' dan jumlah Data melebihi 1 halaman)
+        if selected_size != "All" and total_pages > 1:
+            col_b1, col_b2, col_b3 = st.columns([1, 2, 1])
+            with col_b1:
+                if st.button("⬅️ Back", use_container_width=True, disabled=(st.session_state.current_page == 0)):
+                    st.session_state.current_page -= 1
+                    st.rerun()
+            with col_b2:
+                st.markdown(f"<div style='text-align:center; padding-top: 5px; font-weight:bold; color: #57606a;'>Halaman {st.session_state.current_page + 1} dari {total_pages}</div>", unsafe_allow_html=True)
+            with col_b3:
+                if st.button("Next ➡️", use_container_width=True, disabled=(st.session_state.current_page >= total_pages - 1)):
+                    st.session_state.current_page += 1
+                    st.rerun()
+
+        # =====================================================================
+        # PANEL KHUSUS ADMIN (EDIT / HAPUS)
+        # =====================================================================
+        if is_admin:
+            st.markdown("---")
+            st.subheader("🛠️ Panel Edit / Hapus Data (Khusus Admin)")
+            st.caption("Ketik NRP atau Nama karyawan untuk menampilkan daftar riwayat data yang ingin diubah atau dihapus.")
+            
+            search_admin = st.text_input("🔎 Ketik NRP / Nama Karyawan untuk Edit / Hapus:", placeholder="Contoh: 0211002", key="search_admin_input")
+            
+            if search_admin:
+                df_admin_target = df_sorted[
+                    df_sorted['nrp'].astype(str).str.contains(search_admin, case=False, na=False) | 
+                    df_sorted['nama'].astype(str).str.contains(search_admin, case=False, na=False)
+                ]
+            else:
+                df_admin_target = pd.DataFrame()
+
+            if search_admin and df_admin_target.empty:
+                st.warning(f"Tidak ditemukan data sanksi dengan NRP / Nama: **{search_admin}**")
+            elif not search_admin:
+                st.info("💡 Masukkan NRP atau Nama Karyawan di atas untuk memunculkan daftar opsi edit dan hapus.")
+            else:
+                st.write(f"Ditemukan **{len(df_admin_target)}** data untuk target **{search_admin}**:")
                 
-                expander_title = f"👤 {nama_emp} (NRP: {nrp_emp}) • {st_badge}"
-                
-                with st.expander(expander_title):
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        html_c1 = (
-                            render_detail("📅", "Tanggal Input", tgl_input) +
-                            render_detail("⚖️", "Pasal Pelanggaran", row.get('pasal', '-')) +
-                            render_detail("⏱️", "Masa Sanksi (IN - OUT)", f"{row.get('tgl_in', '-')} s/d {row.get('tgl_out', '-')}") +
-                            render_detail("🏷️", "Status Sanksi", st_badge)
-                        )
-                        st.markdown(html_c1, unsafe_allow_html=True)
-                    
-                    with c2:
-                        html_c2 = (
-                            render_detail("💼", "Jenis Sanksi", jenis_sanksi) +
-                            render_detail("👤", "PIC / Atasan", row.get('pic', '-')) +
-                            render_detail("➕", "Sanksi Tambahan", row.get('sanksi_tambahan') or '-') +
-                            render_detail("📌", "Keterangan", row.get('keterangan') or '-')
-                        )
-                        st.markdown(html_c2, unsafe_allow_html=True)
-                    
-                    st.markdown(f"""
-                        <div style='margin-top: 5px; padding: 10px; background-color: #f6f8fa; border-radius: 8px; border: 1px solid #d0d7de;'>
-                            <div style='color: #6e7781; font-size: 12px; font-weight: 600; margin-bottom: 5px;'>⚠️ Uraian Pelanggaran:</div>
-                            <div style='color: #1f2328; font-size: 13px;'>{row.get('pelanggaran') or "Tidak ada uraian detail."}</div>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if is_admin:
-                        st.markdown("---")
-                        col_act1, col_act2 = st.columns(2)
+                for _, row_target in df_admin_target.iterrows():
+                    target_id = row_target['id']
+                    t_nrp = row_target.get('nrp', '-')
+                    t_nama = row_target.get('nama', '-')
+                    t_sanksi = row_target.get('sanksi', '-')
+                    t_tgl = row_target.get('tanggal', '-')
+                    t_pasal = row_target.get('pasal', '-')
+                    t_status = row_target.get('status', '-')
+
+                    with st.container(border=True):
+                        c_info, c_btn_edit, c_btn_del = st.columns([6, 2, 2])
                         
-                        with col_act1:
+                        with c_info:
+                            st.markdown(
+                                f"**📅 {t_tgl}** | **NRP:** {t_nrp} - **{t_nama}** | **[{t_sanksi}]** `{t_status}`  \n"
+                                f"<small>Pasal: {t_pasal} | PIC: {row_target.get('pic', '-')}</small>", 
+                                unsafe_allow_html=True
+                            )
+                        
+                        with c_btn_edit:
                             with st.popover("✏️ Edit Data", use_container_width=True):
-                                st.subheader(f"✏️ Edit Data: {nama_emp}")
-                                with st.form(f"form_edit_card_{row_id}"):
-                                    e_tgl = st.date_input("Tanggal Input", parse_date(row.get('tanggal')))
-                                    e_nrp = st.text_input("NRP", value=str(nrp_emp))
-                                    e_nama = st.text_input("Nama Karyawan", value=str(nama_emp))
-                                    e_pasal = st.text_input("Pasal Pelanggaran", value=str(row.get('pasal', '')))
+                                st.subheader(f"✏️ Edit Data: {t_nama}")
+                                with st.form(f"form_edit_panel_{target_id}"):
+                                    e_tgl = st.date_input("Tanggal Input", parse_date(row_target.get('tanggal')))
+                                    e_nrp = st.text_input("NRP", value=str(t_nrp))
+                                    e_nama = st.text_input("Nama Karyawan", value=str(t_nama))
+                                    e_pasal = st.text_input("Pasal Pelanggaran", value=str(row_target.get('pasal', '')))
                                     
                                     s_list = ["PERSONAL KONTAK", "PERINGATAN TERTULIS", "SP1", "SP2", "SP3", "DIKEMBALIKAN KE HC"]
-                                    curr_s = row.get('sanksi', "PERSONAL KONTAK")
+                                    curr_s = row_target.get('sanksi', "PERSONAL KONTAK")
                                     e_sanksi = st.selectbox("Jenis Sanksi", s_list, index=s_list.index(curr_s) if curr_s in s_list else 0)
                                     
-                                    e_tgl_in = st.date_input("Tanggal IN", parse_date(row.get('tgl_in')))
-                                    e_tgl_out = st.date_input("Tanggal OUT", parse_date(row.get('tgl_out')))
-                                    e_sanksi_tambahan = st.text_input("Sanksi Tambahan", value=str(row.get('sanksi_tambahan', '')))
-                                    e_pelanggaran = st.text_area("Uraian Pelanggaran", value=str(row.get('pelanggaran', '')))
-                                    e_pic = st.text_input("PIC / Atasan", value=str(row.get('pic', '')))
-                                    e_ket = st.text_input("Keterangan", value=str(row.get('keterangan', '')))
+                                    e_tgl_in = st.date_input("Tanggal IN", parse_date(row_target.get('tgl_in')))
+                                    e_tgl_out = st.date_input("Tanggal OUT", parse_date(row_target.get('tgl_out')))
+                                    e_sanksi_tambahan = st.text_input("Sanksi Tambahan", value=str(row_target.get('sanksi_tambahan', '')))
+                                    e_pelanggaran = st.text_area("Uraian Pelanggaran", value=str(row_target.get('pelanggaran', '')))
+                                    e_pic = st.text_input("PIC / Atasan", value=str(row_target.get('pic', '')))
+                                    e_ket = st.text_input("Keterangan", value=str(row_target.get('keterangan', '')))
                                     
                                     if st.form_submit_button("💾 Simpan Perubahan", type="primary", use_container_width=True):
                                         upd_payload = {
@@ -455,107 +508,17 @@ elif menu == "History & Pencarian":
                                             "sanksi_tambahan": e_sanksi_tambahan, "pelanggaran": e_pelanggaran,
                                             "pic": e_pic, "keterangan": e_ket
                                         }
-                                        supabase.table("sanksi").update(upd_payload).eq("id", row_id).execute()
+                                        supabase.table("sanksi").update(upd_payload).eq("id", target_id).execute()
                                         st.toast(f"Data {e_nama} berhasil diperbarui!", icon="✅")
                                         st.rerun()
-
-                        with col_act2:
+                                        
+                        with c_btn_del:
                             with st.popover("🗑️ Hapus", use_container_width=True):
-                                st.warning(f"Hapus permanen sanksi **{nama_emp}**?")
-                                if st.button("🔴 Ya, Hapus", key=f"del_card_{row_id}", type="primary", use_container_width=True):
-                                    supabase.table("sanksi").delete().eq("id", row_id).execute()
-                                    st.toast(f"Data ID {row_id} berhasil dihapus!", icon="🗑️")
+                                st.warning(f"Hapus permanen sanksi **{t_nama}** (ID: {target_id})?")
+                                if st.button("🔴 Ya, Hapus", key=f"del_panel_{target_id}", type="primary", use_container_width=True):
+                                    supabase.table("sanksi").delete().eq("id", target_id).execute()
+                                    st.toast(f"Data ID {target_id} berhasil dihapus!", icon="🗑️")
                                     st.rerun()
-
-        # MODE TABEL (DEFAULT UTAMA UNTUK PC MAUPUN HP DENGAN HORIZONTAL SCROLL RAPI)
-        else:
-            df_table = df_sorted.drop(columns=['id', 'created_at'], errors='ignore')
-            st.dataframe(
-                df_table,
-                use_container_width=True,
-                hide_index=True,
-                column_config=COLUMN_CONFIG_TABLE
-            )
-            
-            if is_admin:
-                st.markdown("---")
-                st.subheader("🛠️ Panel Edit / Hapus Data (Khusus Admin)")
-                st.caption("Ketik NRP atau Nama karyawan untuk menampilkan daftar riwayat data yang ingin diubah atau dihapus.")
-                
-                search_admin = st.text_input("🔎 Ketik NRP / Nama Karyawan untuk Edit / Hapus:", placeholder="Contoh: 0211002", key="search_admin_input")
-                
-                if search_admin:
-                    df_admin_target = df_sorted[
-                        df_sorted['nrp'].astype(str).str.contains(search_admin, case=False, na=False) | 
-                        df_sorted['nama'].astype(str).str.contains(search_admin, case=False, na=False)
-                    ]
-                else:
-                    df_admin_target = pd.DataFrame()
-
-                if search_admin and df_admin_target.empty:
-                    st.warning(f"Tidak ditemukan data sanksi dengan NRP / Nama: **{search_admin}**")
-                elif not search_admin:
-                    st.info("💡 Masukkan NRP atau Nama Karyawan di atas untuk memunculkan daftar opsi edit dan hapus.")
-                else:
-                    st.write(f"Ditemukan **{len(df_admin_target)}** data untuk target **{search_admin}**:")
-                    
-                    for _, row_target in df_admin_target.iterrows():
-                        target_id = row_target['id']
-                        t_nrp = row_target.get('nrp', '-')
-                        t_nama = row_target.get('nama', '-')
-                        t_sanksi = row_target.get('sanksi', '-')
-                        t_tgl = row_target.get('tanggal', '-')
-                        t_pasal = row_target.get('pasal', '-')
-                        t_status = row_target.get('status', '-')
-
-                        with st.container(border=True):
-                            c_info, c_btn_edit, c_btn_del = st.columns([6, 2, 2])
-                            
-                            with c_info:
-                                st.markdown(
-                                    f"**📅 {t_tgl}** | **NRP:** {t_nrp} - **{t_nama}** | **[{t_sanksi}]** `{t_status}`  \n"
-                                    f"<small>Pasal: {t_pasal} | PIC: {row_target.get('pic', '-')}</small>", 
-                                    unsafe_allow_html=True
-                                )
-                            
-                            with c_btn_edit:
-                                with st.popover("✏️ Edit Data", use_container_width=True):
-                                    st.subheader(f"✏️ Edit Data: {t_nama}")
-                                    with st.form(f"form_edit_panel_{target_id}"):
-                                        e_tgl = st.date_input("Tanggal Input", parse_date(row_target.get('tanggal')))
-                                        e_nrp = st.text_input("NRP", value=str(t_nrp))
-                                        e_nama = st.text_input("Nama Karyawan", value=str(t_nama))
-                                        e_pasal = st.text_input("Pasal Pelanggaran", value=str(row_target.get('pasal', '')))
-                                        
-                                        s_list = ["PERSONAL KONTAK", "PERINGATAN TERTULIS", "SP1", "SP2", "SP3", "DIKEMBALIKAN KE HC"]
-                                        curr_s = row_target.get('sanksi', "PERSONAL KONTAK")
-                                        e_sanksi = st.selectbox("Jenis Sanksi", s_list, index=s_list.index(curr_s) if curr_s in s_list else 0)
-                                        
-                                        e_tgl_in = st.date_input("Tanggal IN", parse_date(row_target.get('tgl_in')))
-                                        e_tgl_out = st.date_input("Tanggal OUT", parse_date(row_target.get('tgl_out')))
-                                        e_sanksi_tambahan = st.text_input("Sanksi Tambahan", value=str(row_target.get('sanksi_tambahan', '')))
-                                        e_pelanggaran = st.text_area("Uraian Pelanggaran", value=str(row_target.get('pelanggaran', '')))
-                                        e_pic = st.text_input("PIC / Atasan", value=str(row_target.get('pic', '')))
-                                        e_ket = st.text_input("Keterangan", value=str(row_target.get('keterangan', '')))
-                                        
-                                        if st.form_submit_button("💾 Simpan Perubahan", type="primary", use_container_width=True):
-                                            upd_payload = {
-                                                "tanggal": str(e_tgl), "nrp": e_nrp, "nama": e_nama, "pasal": e_pasal,
-                                                "sanksi": e_sanksi, "tgl_in": str(e_tgl_in), "tgl_out": str(e_tgl_out),
-                                                "sanksi_tambahan": e_sanksi_tambahan, "pelanggaran": e_pelanggaran,
-                                                "pic": e_pic, "keterangan": e_ket
-                                            }
-                                            supabase.table("sanksi").update(upd_payload).eq("id", target_id).execute()
-                                            st.toast(f"Data {e_nama} berhasil diperbarui!", icon="✅")
-                                            st.rerun()
-                                            
-                            with c_btn_del:
-                                with st.popover("🗑️ Hapus", use_container_width=True):
-                                    st.warning(f"Hapus permanen sanksi **{t_nama}** (ID: {target_id})?")
-                                    if st.button("🔴 Ya, Hapus", key=f"del_panel_{target_id}", type="primary", use_container_width=True):
-                                        supabase.table("sanksi").delete().eq("id", target_id).execute()
-                                        st.toast(f"Data ID {target_id} berhasil dihapus!", icon="🗑️")
-                                        st.rerun()
 
     else:
         st.info("Belum ada data sanksi.")
