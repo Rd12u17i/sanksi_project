@@ -11,10 +11,9 @@ st.set_page_config(
     page_title="OAMS - Sistem Sanksi Karyawan",
     page_icon="📋",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# Custom CSS untuk merapatkan layout, metrik kustom, tabel full presisi, dan hide toolbar
 st.markdown("""
 <style>
     /* Menyembunyikan Header, Toolbar Web, dan Ikon GitHub/Fork */
@@ -23,13 +22,13 @@ st.markdown("""
     #MainMenu {visibility: hidden !important;}
     footer {visibility: hidden !important;}
     
-    /* 1. Memangkas ruang kosong di bagian paling atas layar */
+    /* Memangkas ruang kosong di bagian paling atas layar */
     .block-container {
         padding-top: 1rem !important;
         padding-bottom: 1rem !important;
     }
 
-    /* 2. Styling Kartu Statistik Kustom (Sangat Rapat & Presisi) */
+    /* Styling Kartu Statistik Kustom */
     .stat-card {
         background-color: #f8f9fa;
         border: 1px solid #e1e4e8;
@@ -52,7 +51,7 @@ st.markdown("""
         line-height: 1.2;
     }
     
-    /* 3. Merapatkan jarak vertikal antar input */
+    /* Merapatkan jarak vertikal antar input form */
     div[data-testid="stVerticalBlock"] {
         gap: 0.2rem !important;
     }
@@ -61,7 +60,7 @@ st.markdown("""
         background-color: #ffffff;
     }
 
-    /* 4. Memaksa Tabel Auto-Size & Fit Layar HP/PC Tanpa Horizontal Scroll */
+    /* Memaksa Tabel Auto-Size & Fit Layar */
     div[data-testid="stDataFrame"] {
         width: 100% !important;
         border-radius: 8px;
@@ -71,12 +70,12 @@ st.markdown("""
         width: 100% !important;
     }
     
-    /* 5. MENYEMBUNYIKAN Toolbar Bawaan Tabel (Download, Search, Fullscreen) SEPENUHNYA */
+    /* Menyembunyikan Toolbar Bawaan Tabel sepenuhnya */
     div[data-testid="stElementToolbar"] {
         display: none !important;
     }
     
-    /* Memastikan dropdown pagination tampil di atas elemen lain (tidak tenggelam oleh tabel) */
+    /* Dropdown pagination tidak tenggelam oleh tabel */
     div[data-baseweb="select"] {
         z-index: 9999 !important;
     }
@@ -149,28 +148,28 @@ def load_supabase_master():
 MASTER_KARYAWAN, LIST_PASAL, LIST_PIC = load_supabase_master()
 
 # -----------------------------------------------------------------------------
-# 3. SIDEBAR
+# 3. HEADER & NAVIGASI UTAMA (MENGGANTIKAN SIDEBAR)
 # -----------------------------------------------------------------------------
-st.sidebar.title("🔐 OAMS System")
-role = st.sidebar.radio("Akses Sebagai:", ["User (Read-Only)", "Admin"])
+st.markdown("<h2 style='text-align: center; margin-top: -20px; margin-bottom: 5px;'>📋 OAMS System</h2>", unsafe_allow_html=True)
 
-is_admin = False
-if role == "Admin":
-    password = st.sidebar.text_input("Masukkan PIN Admin:", type="password")
-    if password == "1234":
-        is_admin = True
-        st.sidebar.success("✅ Akses Admin Aktif")
-    elif password:
-        st.sidebar.error("❌ Password Salah!")
-
-st.sidebar.markdown("---")
-
-if is_admin:
-    menu_options = ["Dashboard & Input", "History & Pencarian"]
-else:
-    menu_options = ["History & Pencarian"]
-
-menu = st.sidebar.radio("Menu Utama", menu_options)
+with st.expander("⚙️ Login & Navigasi Utama", expanded=True):
+    col_nav1, col_nav2 = st.columns(2)
+    
+    with col_nav1:
+        role = st.radio("Akses Sebagai:", ["User (Read-Only)", "Admin"], horizontal=True)
+        is_admin = False
+        if role == "Admin":
+            password = st.text_input("Masukkan PIN Admin:", type="password")
+            if password == "1234":
+                is_admin = True
+                st.success("✅ Akses Admin Aktif")
+    
+    with col_nav2:
+        if is_admin:
+            menu = st.radio("Menu Utama:", ["Dashboard & Input", "History & Pencarian"], horizontal=True)
+        else:
+            menu = "History & Pencarian"
+            st.info("Mode User: Hanya dapat melihat history pencarian data.")
 
 def parse_date(date_str):
     if not date_str or pd.isna(date_str):
@@ -180,7 +179,6 @@ def parse_date(date_str):
     except Exception:
         return date.today()
 
-# KONFIGURASI KOLOM: Width dilepas (auto) agar tabel bisa mengecil otomatis menyesuaikan layar (HP/PC)
 COLUMN_CONFIG_TABLE = {
     "tanggal": st.column_config.TextColumn("Tanggal Input"),
     "nrp": st.column_config.TextColumn("NRP"),
@@ -200,9 +198,7 @@ COLUMN_CONFIG_TABLE = {
 # 4. DASHBOARD & INPUT SANKSI
 # -----------------------------------------------------------------------------
 if menu == "Dashboard & Input" and is_admin:
-    
-    st.markdown("<h3 style='margin-top: -15px; margin-bottom: 10px;'>📊 Dashboard & Kelola Sanksi</h3>", unsafe_allow_html=True)
-    
+    st.markdown("---")
     res = supabase.table("sanksi").select("*").execute()
     df = pd.DataFrame(res.data)
     
@@ -211,7 +207,6 @@ if menu == "Dashboard & Input" and is_admin:
     sp1_count = len(df[df['sanksi'] == 'SP1']) if not df.empty and 'sanksi' in df.columns else 0
     pk_count = len(df[df['sanksi'] == 'PERSONAL KONTAK']) if not df.empty and 'sanksi' in df.columns else 0
     
-    # RENDER KARTU STATISTIK
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.markdown(f"""<div class='stat-card'><div class='stat-label'>Total Sanksi</div><div class='stat-value'>{total_data}</div></div>""", unsafe_allow_html=True)
@@ -285,7 +280,7 @@ if menu == "Dashboard & Input" and is_admin:
                     "pic": pic, "keterangan": ket
                 }
                 supabase.table("sanksi").insert(payload).execute()
-
+                
                 is_new_master = False
                 try:
                     if nrp not in MASTER_KARYAWAN:
@@ -306,30 +301,16 @@ if menu == "Dashboard & Input" and is_admin:
                 st.session_state.should_reset = True
                 st.session_state.notif_success = f"Berhasil menyimpan sanksi untuk {nama} ({nrp})!"
                 st.rerun()
-    
-    st.markdown("<h4 style='margin-top: 15px; margin-bottom: 5px;'>📋 5 Record Terbaru</h4>", unsafe_allow_html=True)
-    if not df.empty:
-        df_dash = df.sort_values(by="id", ascending=False).head(5)
-        df_dash_clean = df_dash.drop(columns=['id', 'created_at'], errors='ignore')
-        st.dataframe(
-            df_dash_clean,
-            use_container_width=True,
-            hide_index=True,
-            column_config=COLUMN_CONFIG_TABLE
-        )
-    else:
-        st.info("Belum ada data sanksi.")
 
 # -----------------------------------------------------------------------------
-# 5. HISTORY & PENCARIAN (FITUR PAGINATION & TABEL FULL)
+# 5. HISTORY & PENCARIAN (FITUR PAGINATION & TABEL ADAPTIF)
 # -----------------------------------------------------------------------------
 elif menu == "History & Pencarian":
-    st.markdown("<h3 style='margin-top: -15px;'>🔍 History & Pencarian Sanksi</h3>", unsafe_allow_html=True)
+    st.markdown("---")
     
     res = supabase.table("sanksi").select("*").execute()
     df = pd.DataFrame(res.data)
     
-    # Manajemen Pencarian (Mereset Pagination jika pencarian berubah)
     if "last_search" not in st.session_state:
         st.session_state.last_search = ""
         
@@ -361,10 +342,8 @@ elif menu == "History & Pencarian":
 
         df_sorted = df_filtered.sort_values(by="id", ascending=False)
         total_rows = len(df_sorted)
-        
-        st.write(f"Total data ditemukan: **{total_rows}** baris")
 
-        # Tombol Download Excel
+        # DOWNLOAD EXCEL (Selalu mengunduh semua 12 kolom secara utuh)
         column_order_excel = [
             'tanggal', 'nrp', 'nama', 'pasal', 'sanksi', 
             'tgl_in', 'tgl_out', 'status', 'sanksi_tambahan', 
@@ -377,13 +356,18 @@ elif menu == "History & Pencarian":
             df_sorted[avail_excel].to_excel(writer, index=False, sheet_name='Data Sanksi')
 
         st.download_button(
-            label="📥 Download Data Terupdate ke Excel",
+            label="📥 Download Data Excel (Semua Kolom)",
             data=buffer.getvalue(),
             file_name=f"Data_Sanksi_{date.today()}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
-        st.markdown("---")
+
+        col_t1, col_t2 = st.columns([1, 1])
+        with col_t1:
+            st.write(f"Total data: **{total_rows}** baris")
+        with col_t2:
+            show_all_cols = st.toggle("Tampilkan Semua 12 Kolom (Mode Geser)")
 
         # =====================================================================
         # LOGIKA PAGINATION (10, 50, 100, ALL)
@@ -392,38 +376,41 @@ elif menu == "History & Pencarian":
             st.session_state.current_page = 0
             
         page_options = [10, 50, 100, "All"]
-        
         col_p1, col_p2 = st.columns([1, 3])
         with col_p1:
             selected_size = st.selectbox("Tampilkan baris:", page_options, index=0)
             
         page_size_val = total_rows if selected_size == "All" else int(selected_size)
         
-        # Kalkulasi Total Halaman
         if total_rows == 0:
             total_pages = 1
         else:
             total_pages = (total_rows - 1) // page_size_val + 1 if page_size_val > 0 else 1
             
-        # Keamanan agar halaman tidak melebihi batas (out of bounds)
         if st.session_state.current_page >= total_pages:
             st.session_state.current_page = 0
             
-        # Pemotongan Dataframe (Slicing) berdasarkan halaman saat ini
         start_idx = st.session_state.current_page * page_size_val
         end_idx = start_idx + page_size_val
         df_display = df_sorted.iloc[start_idx:end_idx]
 
-        # RENDER TABEL (FULL RESPONSIVE LAYAR HP & PC)
-        df_table = df_display.drop(columns=['id', 'created_at'], errors='ignore')
+        # FILTER KOLOM: Jika tidak ditoggle, hanya tampilkan 4 kolom inti agar muat penuh di HP
+        if show_all_cols:
+            df_table = df_display.drop(columns=['id', 'created_at'], errors='ignore')
+        else:
+            core_cols = ['nama', 'pasal', 'sanksi', 'status']
+            avail_core = [c for c in core_cols if c in df_display.columns]
+            df_table = df_display[avail_core]
+
+        # RENDER TABEL
         st.dataframe(
             df_table,
-            use_container_width=True, # Tabel auto-compress menyesuaikan batas tepi kiri & kanan layer
+            use_container_width=True,
             hide_index=True,
             column_config=COLUMN_CONFIG_TABLE
         )
         
-        # RENDER TOMBOL BACK & NEXT (Jika mode BUKAN 'All' dan jumlah Data melebihi 1 halaman)
+        # RENDER TOMBOL BACK & NEXT
         if selected_size != "All" and total_pages > 1:
             col_b1, col_b2, col_b3 = st.columns([1, 2, 1])
             with col_b1:
