@@ -8,7 +8,7 @@ import html
 # -----------------------------------------------------------------------------
 # KONFIGURASI HALAMAN & CSS
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="OAMS - Sistem Sanksi Karyawan", page_icon="", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="OAMS - Sistem Sanksi Karyawan", page_icon="📋", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
 <style>
@@ -54,7 +54,6 @@ except Exception as e:
 # 2. OPTIMASI LOAD DATA (SERVER-SIDE)
 # -----------------------------------------------------------------------------
 def fetch_all_data(table, columns="*"):
-    """Helper untuk mengambil semua data (Digunakan HANYA untuk Download Excel)"""
     res_data = []
     limit, offset = 1000, 0
     while True:
@@ -69,7 +68,6 @@ def fetch_all_data(table, columns="*"):
 
 @st.cache_data(ttl=300)
 def load_supabase_master():
-    """Hanya ambil dari tabel master, SANGAT CEPAT."""
     master_karyawan = {}
     list_pasal, list_pic = set(), set()
     for r in fetch_all_data("master_karyawan", "nrp, nama"):
@@ -84,23 +82,18 @@ MASTER_KARYAWAN, LIST_PASAL, LIST_PIC = load_supabase_master()
 
 @st.cache_data(ttl=60)
 def get_dashboard_stats():
-    """Hanya mengambil 1 kolom (sanksi) untuk menghitung statistik. Sangat ringan."""
     data = fetch_all_data("sanksi", "sanksi")
     return pd.DataFrame(data)
 
 @st.cache_data(ttl=15)
 def get_latest_records(limit=10):
-    """Langsung ambil 10 baris terbaru dari database."""
     res = supabase.table("sanksi").select("*").order("id", desc=True).limit(limit).execute()
     return pd.DataFrame(res.data or [])
 
 def search_sanksi_db(query=""):
-    """Pencarian server-side menggunakan ilike. Sangat cepat!"""
     if query:
-        # Cari di kolom nama atau nrp, limit 200 hasil agar tidak nge-hang
         res = supabase.table("sanksi").select("*").or_(f"nama.ilike.%{query}%,nrp.ilike.%{query}%").order("id", desc=True).limit(200).execute()
     else:
-        # Default: Tampilkan 100 data terbaru saja
         res = supabase.table("sanksi").select("*").order("id", desc=True).limit(100).execute()
     return pd.DataFrame(res.data or [])
 
@@ -117,7 +110,7 @@ def normalize_text(value): return " ".join(str(value).strip().lower().split()) i
 def clean_excel_text(val): return str(val).strip() if not pd.isna(val) else ""
 def calculate_status(value):
     t_out = pd.to_datetime(value, errors="coerce")
-    return " NON-AKTIF" if pd.isna(t_out) or date.today() > t_out.date() else " AKTIF"
+    return "⚪ NON-AKTIF" if pd.isna(t_out) or date.today() > t_out.date() else "🔴 AKTIF"
 
 TABLE_COLUMNS = [("tanggal", "Tanggal", "col-tanggal"), ("nrp", "NRP", "col-nrp"), ("nama", "Nama Karyawan", "col-nama"), ("pasal", "Pasal", "col-pasal"), ("sanksi", "Jenis Sanksi", "col-sanksi"), ("tgl_in", "Tgl IN", "col-tglin"), ("tgl_out", "Tgl OUT", "col-tglout"), ("status", "Status", "col-status"), ("sanksi_tambahan", "Sanksi Tambahan", "col-tambahan"), ("pelanggaran", "Uraian Pelanggaran", "col-pelanggaran"), ("pic", "PIC / Atasan", "col-pic"), ("keterangan", "Keterangan", "col-ket")]
 
@@ -142,13 +135,13 @@ def render_html_table(df):
 # -----------------------------------------------------------------------------
 # 4. SIDEBAR
 # -----------------------------------------------------------------------------
-st.sidebar.title(" OAMS System")
+st.sidebar.title("🔐 OAMS System")
 role = st.sidebar.radio("Akses Sebagai:", ["User (Read-Only)", "Admin"])
 is_admin = False
 if role == "Admin":
     if st.sidebar.text_input("Masukkan PIN Admin:", type="password") == "1234":
         is_admin = True
-        st.sidebar.success(" Akses Admin Aktif")
+        st.sidebar.success("✅ Akses Admin Aktif")
 st.sidebar.markdown("---")
 menu = st.sidebar.radio("Menu Utama", ["Dashboard & Input", "History & Pencarian"] if is_admin else ["History & Pencarian"])
 
@@ -156,9 +149,8 @@ menu = st.sidebar.radio("Menu Utama", ["Dashboard & Input", "History & Pencarian
 # 5. DASHBOARD & INPUT ADMIN
 # -----------------------------------------------------------------------------
 if menu == "Dashboard & Input" and is_admin:
-    st.markdown("<h3 style='margin-top:-12px;margin-bottom:7px;'> Dashboard & Kelola Sanksi</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='margin-top:-12px;margin-bottom:7px;'>📊 Dashboard & Kelola Sanksi</h3>", unsafe_allow_html=True)
     
-    # LOAD HANYA STATS (Sangat Ringan)
     df_stats = get_dashboard_stats()
     total_data = len(df_stats)
     sc = df_stats["sanksi"].value_counts() if not df_stats.empty else pd.Series()
@@ -172,9 +164,8 @@ if menu == "Dashboard & Input" and is_admin:
     cards = "".join(f"<div class='stat-card'><div class='stat-label'>{html.escape(l)}</div><div class='stat-value'>{v}</div></div>" for l, v in stats)
     st.markdown(f"<div class='stats-row'>{cards}</div><hr style='margin:7px 0px;'>", unsafe_allow_html=True)
 
-    # TABS INPUT
-    st.markdown("<h4 style='margin-bottom:7px;'> Form Input Sanksi</h4>", unsafe_allow_html=True)
-    tab_manual, tab_excel = st.tabs([" Input Manual", " Upload Excel (SBook1.xlsx)"])
+    st.markdown("<h4 style='margin-bottom:7px;'>📝 Form Input Sanksi</h4>", unsafe_allow_html=True)
+    tab_manual, tab_excel = st.tabs(["📝 Input Manual", "📂 Upload Excel (SBook1.xlsx)"])
 
     with tab_manual:
         if "fv" not in st.session_state: st.session_state.fv = 0
@@ -199,13 +190,12 @@ if menu == "Dashboard & Input" and is_admin:
                 pic = st.text_input("PIC Baru", key=f"picb_{fv}") if sel_pic == "+ Baru..." else sel_pic
                 ket = st.text_input("Keterangan", key=f"k_{fv}")
 
-            if st.button(" Simpan", type="primary", use_container_width=True):
+            if st.button("💾 Simpan", type="primary", use_container_width=True):
                 if not nrp or not nama: st.error("NRP dan Nama wajib!"); st.stop()
                 if not plg: st.error("Pelanggaran wajib!"); st.stop()
                 
-                # Cek duplikat real-time
                 dup = supabase.table("sanksi").select("id").eq("nrp", nrp).eq("sanksi", sanksi).eq("tgl_in", str(tgl_in)).execute()
-                if len(dup.data) > 0: st.error(" Data sudah ada di sistem!"); st.stop()
+                if len(dup.data) > 0: st.error("⚠️ Data sudah ada di sistem!"); st.stop()
 
                 payload = {"tanggal": str(tgl), "nrp": nrp, "nama": nama, "pasal": pasal, "sanksi": sanksi, "tgl_in": str(tgl_in), "tgl_out": str(tgl_out), "sanksi_tambahan": tambahan, "pelanggaran": plg, "pic": pic, "keterangan": ket}
                 supabase.table("sanksi").insert(payload).execute()
@@ -218,7 +208,7 @@ if menu == "Dashboard & Input" and is_admin:
     with tab_excel:
         with st.container(border=True):
             file = st.file_uploader("Upload Excel", type=["xlsx", "xls"])
-            if file and st.button(" Proses Semua Data", type="primary", use_container_width=True):
+            if file and st.button("🚀 Proses Semua Data", type="primary", use_container_width=True):
                 df_up = pd.read_excel(file)
                 with st.spinner(f"Memproses {len(df_up)} baris..."):
                     exist = { (r['nrp'], r['sanksi'], r['tgl_in']) for r in supabase.table("sanksi").select("nrp,sanksi,tgl_in").execute().data }
@@ -246,19 +236,17 @@ if menu == "Dashboard & Input" and is_admin:
                     if pl:
                         for i in range(0, len(pl), 1000): supabase.table("sanksi").insert(pl[i:i+1000]).execute()
                     
-                    st.success(f" Upload Selesai! Berhasil: {len(pl)} | Duplikat: {dc} | Error: {ec}")
+                    st.success(f"✅ Upload Selesai! Berhasil: {len(pl)} | Duplikat: {dc} | Error: {ec}")
                     st.cache_data.clear()
 
-    # DANGER ZONE
     st.markdown("---")
-    with st.expander(" Hapus Semua Data", expanded=False):
-        if st.text_input("Sandi khusus:", type="password") == "hapus" and st.button(" KONFIRMASI HAPUS", type="primary"):
+    with st.expander("⚠️ Hapus Semua Data", expanded=False):
+        if st.text_input("Sandi khusus:", type="password") == "hapus" and st.button("🔴 KONFIRMASI HAPUS", type="primary"):
             supabase.table("sanksi").delete().neq("nrp", "DUMMY").execute()
             st.cache_data.clear()
             st.rerun()
 
-    # 10 TERBARU (Sangat Cepat)
-    st.markdown("<h4> 10 Record Terbaru</h4>", unsafe_allow_html=True)
+    st.markdown("<h4>📋 10 Record Terbaru</h4>", unsafe_allow_html=True)
     df_recent = get_latest_records(10)
     if not df_recent.empty: df_recent["status"] = df_recent["tgl_out"].apply(calculate_status)
     render_html_table(df_recent)
@@ -267,11 +255,9 @@ if menu == "Dashboard & Input" and is_admin:
 # 6. HISTORY & PENCARIAN
 # -----------------------------------------------------------------------------
 elif menu == "History & Pencarian":
-    st.markdown("<h3 style='margin-top:-12px;margin-bottom:7px;'> History & Pencarian Sanksi</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='margin-top:-12px;margin-bottom:7px;'>🔍 History & Pencarian Sanksi</h3>", unsafe_allow_html=True)
     
-    q = str(st.text_input(" Cari NRP / Nama:")).strip()
-    
-    # LAZY LOADING: Hanya ambil data yang dicari, atau 100 terbaru jika kosong
+    q = str(st.text_input("🔎 Cari NRP / Nama:")).strip()
     df_disp = search_sanksi_db(q)
     
     if not df_disp.empty:
@@ -279,9 +265,8 @@ elif menu == "History & Pencarian":
         st.markdown(f"<div class='table-info'>Menampilkan <b>{len(df_disp)}</b> data (Gunakan kolom pencarian untuk data spesifik)</div>", unsafe_allow_html=True)
         render_html_table(df_disp)
         
-        # DOWNLOAD FULL DATA EXCEL
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button(" Unduh Seluruh Database ke Excel (Proses lambat)"):
+        if st.button("📥 Unduh Seluruh Database ke Excel (Proses lambat)"):
             with st.spinner("Mengunduh ribuan data dari server, mohon tunggu..."):
                 all_df = pd.DataFrame(fetch_all_data("sanksi"))
                 if not all_df.empty:
@@ -290,13 +275,13 @@ elif menu == "History & Pencarian":
                     with pd.ExcelWriter(buf, engine="openpyxl") as w:
                         cols = [c for c in ["tanggal", "nrp", "nama", "pasal", "sanksi", "tgl_in", "tgl_out", "status", "sanksi_tambahan", "pelanggaran", "pic", "keterangan"] if c in all_df.columns]
                         all_df[cols].to_excel(w, index=False)
-                    st.download_button(" Klik Disini Menyimpan File Excel", buf.getvalue(), "Data_Sanksi.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    st.download_button("✅ Klik Disini Menyimpan File Excel", buf.getvalue(), "Data_Sanksi.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     else:
         st.info("Data tidak ditemukan.")
 
     if is_admin and not df_disp.empty:
         st.markdown("---")
-        st.subheader(" Edit / Hapus Data")
+        st.subheader("🛠️ Edit / Hapus Data")
         if q:
             for _, r in df_disp.iterrows():
                 tid = r.get("id")
@@ -304,9 +289,19 @@ elif menu == "History & Pencarian":
                     c_i, c_e, c_d = st.columns([6, 2, 2])
                     c_i.markdown(f"**NRP:** {r.get('nrp')} - **{r.get('nama')}** | **[{r.get('sanksi')}]**")
                     with c_e:
-                        with st.popover(" Edit", use_container_width=True):
+                        with st.popover("✏️ Edit", use_container_width=True):
                             with st.form(f"e_{tid}"):
                                 n = st.text_input("Nama", r.get('nama'))
+                                if st.form_submit_button("Simpan"): 
+                                    supabase.table("sanksi").update({"nama": n}).eq("id", tid).execute()
+                                    st.cache_data.clear(); st.rerun()
+                    with c_d:
+                        if st.button("🗑️ Hapus", key=f"d_{tid}", type="primary", use_container_width=True):
+                            supabase.table("sanksi").delete().eq("id", tid).execute()
+                            st.cache_data.clear(); st.rerun()
+        else:
+            st.info("💡 Ketik NRP/Nama di kolom pencarian atas untuk memunculkan tombol Edit & Hapus.")
+ama", r.get('nama'))
                                 if st.form_submit_button("Simpan"): 
                                     supabase.table("sanksi").update({"nama": n}).eq("id", tid).execute()
                                     st.cache_data.clear(); st.rerun()
