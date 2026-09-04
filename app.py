@@ -315,8 +315,7 @@ elif menu == "History & Pencarian":
                             supabase.table("sanksi").delete().eq("id", tid).execute()
                             st.cache_data.clear(); st.rerun()
         else:
-            st.info(" Ketik NRP/Nama di kolom pencarian atas untuk memunculkan tombol Edit & Hapus.")
-valid...")
+            st.info(" Ketik NRP/Nama di kolom pencarian atas untuk memunculkan tombol Edit & Hapus.")valid...")
 
                             for index, row in df_upload.iterrows():
                                 raw_nrp = clean_excel_text(row.get('NRP'))
@@ -553,4 +552,4 @@ elif menu == "History & Pencarian":
             else:
                 st.info("💡 Masukkan NRP atau Nama Karyawan di atas untuk opsi edit dan hapus secara individu.")
     else:
-        st.info("Belum ada data sanksi.")
+        st.info("Belum ada data sanksi.")")
