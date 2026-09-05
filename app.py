@@ -6,10 +6,18 @@ import io
 import html
 
 # -----------------------------------------------------------------------------
-# KONFIGURASI HALAMAN & CSS
+# KONFIGURASI HALAMAN
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="OAMS - Sistem Sanksi Karyawan", page_icon="📋", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="OAMS - Sistem Sanksi Karyawan",
+    page_icon="ðŸ“‹",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
+# -----------------------------------------------------------------------------
+# CUSTOM CSS
+# -----------------------------------------------------------------------------
 st.markdown("""
 <style>
     .block-container { padding-top: 0.8rem !important; padding-bottom: 1rem !important; max-width: 100% !important; }
@@ -31,6 +39,7 @@ st.markdown("""
     .table-info { font-size: 12px; color: #57606a; margin: 3px 0 6px 0; }
     @media (max-width: 800px) { .stats-row { grid-template-columns: repeat(4, 1fr); gap: 6px; } }
     @media (max-width: 600px) { .stats-row { grid-template-columns: repeat(4, 1fr); gap: 4px; } .stat-card { padding: 5px 2px; border-radius: 6px; } .stat-label { font-size: 9px; height: 24px; } .stat-value { font-size: 14px; } .table-wrapper { border-radius: 5px; } .oams-table { font-size: 6px; } .oams-table th, .oams-table td { padding: 2px 2px; } }
+    .stExpander { border: 1px solid #e1e4e8 !important; border-radius: 10px !important; background-color: #ffffff !important; margin-bottom: 8px !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -51,266 +60,291 @@ except Exception as e:
     st.stop()
 
 # -----------------------------------------------------------------------------
-# 2. OPTIMASI LOAD DATA (SERVER-SIDE)
+# 2. LOAD DATA DENGAN PAGINASI (AGAR BISA AMBIL > 1000 DATA)
 # -----------------------------------------------------------------------------
 def fetch_all_data(table, columns="*"):
+    """Helper untuk mengambil semua data melewati limit 1000 row Supabase."""
     res_data = []
-    limit, offset = 1000, 0
+    limit = 1000
+    offset = 0
     while True:
         try:
             res = supabase.table(table).select(columns).range(offset, offset + limit - 1).execute()
             data = res.data or []
             res_data.extend(data)
-            if len(data) < limit: break
+            if len(data) < limit:
+                break
             offset += limit
-        except: break
+        except Exception as e:
+            st.error(f"Gagal mengambil data dari {table}: {e}")
+            break
     return res_data
+
+@st.cache_data(ttl=60)
+def load_all_sanksi():
+    data = fetch_all_data("sanksi")
+    return pd.DataFrame(data)
 
 @st.cache_data(ttl=300)
 def load_supabase_master():
     master_karyawan = {}
-    list_pasal, list_pic = set(), set()
+    list_pasal = set()
+    list_pic = set()
+
     for r in fetch_all_data("master_karyawan", "nrp, nama"):
-        if r.get("nrp") and r.get("nama"): master_karyawan[str(r["nrp"]).strip()] = str(r["nama"]).strip()
+        if r.get("nrp") and r.get("nama"):
+            master_karyawan[str(r["nrp"]).strip()] = str(r["nama"]).strip()
+
     for r in fetch_all_data("master_pasal", "pasal"):
         if r.get("pasal"): list_pasal.add(str(r["pasal"]).strip())
+
     for r in fetch_all_data("master_pic", "nama_pic"):
         if r.get("nama_pic"): list_pic.add(str(r["nama_pic"]).strip())
+
+    # Update master dari tabel sanksi berjalan
+    for r in fetch_all_data("sanksi", "nrp, nama, pasal, pic"):
+        if r.get("nrp") and r.get("nama"):
+            master_karyawan[str(r["nrp"]).strip()] = str(r["nama"]).strip()
+        if r.get("pasal"): list_pasal.add(str(r["pasal"]).strip())
+        if r.get("pic"): list_pic.add(str(r["pic"]).strip())
+
     return master_karyawan, sorted(list(list_pasal)), sorted(list(list_pic))
 
 MASTER_KARYAWAN, LIST_PASAL, LIST_PIC = load_supabase_master()
 
-@st.cache_data(ttl=60)
-def get_dashboard_stats():
-    data = fetch_all_data("sanksi", "sanksi")
-    return pd.DataFrame(data)
-
-@st.cache_data(ttl=15)
-def get_latest_records(limit=10):
-    res = supabase.table("sanksi").select("*").order("id", desc=True).limit(limit).execute()
-    return pd.DataFrame(res.data or [])
-
-def search_sanksi_db(query=""):
-    if query:
-        res = supabase.table("sanksi").select("*").or_(f"nama.ilike.%{query}%,nrp.ilike.%{query}%").order("id", desc=True).limit(200).execute()
-    else:
-        res = supabase.table("sanksi").select("*").order("id", desc=True).limit(100).execute()
-    return pd.DataFrame(res.data or [])
-
 # -----------------------------------------------------------------------------
-# 3. FUNGSI BANTU & RENDER TABEL
+# 3. FUNGSI BANTU
 # -----------------------------------------------------------------------------
 def parse_date(value):
-    if pd.isna(value) or not value: return date.today()
-    if isinstance(value, (datetime, date)): return value if isinstance(value, date) else value.date()
+    if value is None or pd.isna(value) or str(value).strip() == "": return date.today()
+    if isinstance(value, datetime): return value.date()
+    if isinstance(value, date): return value
     parsed = pd.to_datetime(str(value), errors="coerce")
-    return parsed.date() if not pd.isna(parsed) else date.today()
+    if pd.isna(parsed): return date.today()
+    return parsed.date()
 
-def normalize_text(value): return " ".join(str(value).strip().lower().split()) if value else ""
-def clean_excel_text(val): return str(val).strip() if not pd.isna(val) else ""
+def normalize_text(value):
+    if value is None: return ""
+    return " ".join(str(value).strip().lower().split())
+
+def clean_excel_text(val):
+    if pd.isna(val) or val is None: return ""
+    return str(val).strip()
+
 def calculate_status(value):
     t_out = pd.to_datetime(value, errors="coerce")
-    return "⚪ NON-AKTIF" if pd.isna(t_out) or date.today() > t_out.date() else "🔴 AKTIF"
+    if pd.isna(t_out): return "âšª NON-AKTIF"
+    return "ðŸ”´ AKTIF" if date.today() <= t_out.date() else "âšª NON-AKTIF"
 
-TABLE_COLUMNS = [("tanggal", "Tanggal", "col-tanggal"), ("nrp", "NRP", "col-nrp"), ("nama", "Nama Karyawan", "col-nama"), ("pasal", "Pasal", "col-pasal"), ("sanksi", "Jenis Sanksi", "col-sanksi"), ("tgl_in", "Tgl IN", "col-tglin"), ("tgl_out", "Tgl OUT", "col-tglout"), ("status", "Status", "col-status"), ("sanksi_tambahan", "Sanksi Tambahan", "col-tambahan"), ("pelanggaran", "Uraian Pelanggaran", "col-pelanggaran"), ("pic", "PIC / Atasan", "col-pic"), ("keterangan", "Keterangan", "col-ket")]
+def check_duplicate_manual(df, nrp, sanksi, tgl_in, pelanggaran, exclude_id=None):
+    if df.empty: return False
+    temp = df.copy()
+    if exclude_id is not None and "id" in temp.columns: temp = temp[temp["id"] != exclude_id]
+    
+    mask = (
+        temp["nrp"].map(normalize_text).eq(normalize_text(nrp))
+        & temp["sanksi"].map(normalize_text).eq(normalize_text(sanksi))
+        & temp["tgl_in"].map(lambda x: parse_date(x).isoformat()).eq(parse_date(tgl_in).isoformat())
+        & temp["pelanggaran"].map(normalize_text).eq(normalize_text(pelanggaran))
+    )
+    return bool(mask.any())
 
-def display_value(value): return str(value).strip() if value and not pd.isna(value) else "-"
+def remove_duplicate_dicts(dict_list, key):
+    seen = set()
+    res = []
+    for d in dict_list:
+        if d[key] not in seen:
+            seen.add(d[key])
+            res.append(d)
+    return res
+
+# -----------------------------------------------------------------------------
+# 4. TABEL RESPONSIVE HTML
+# -----------------------------------------------------------------------------
+TABLE_COLUMNS = [
+    ("tanggal", "Tanggal", "col-tanggal"), ("nrp", "NRP", "col-nrp"), ("nama", "Nama Karyawan", "col-nama"),
+    ("pasal", "Pasal", "col-pasal"), ("sanksi", "Jenis Sanksi", "col-sanksi"), ("tgl_in", "Tgl IN", "col-tglin"),
+    ("tgl_out", "Tgl OUT", "col-tglout"), ("status", "Status", "col-status"), ("sanksi_tambahan", "Sanksi Tambahan", "col-tambahan"),
+    ("pelanggaran", "Uraian Pelanggaran", "col-pelanggaran"), ("pic", "PIC / Atasan", "col-pic"), ("keterangan", "Keterangan", "col-ket"),
+]
+
+def display_value(value):
+    if value is None or (isinstance(value, float) and pd.isna(value)): return "-"
+    text = str(value).strip()
+    return text if text else "-"
 
 def render_html_table(df):
     if df.empty:
         st.info("Belum ada data sanksi.")
         return
-    header = "".join(f"<th class='{css}'>{html.escape(lbl)}</th>" for _, lbl, css in TABLE_COLUMNS)
+
+    header = "".join(f"<th class='{css_class}'>{html.escape(label)}</th>" for _, label, css_class in TABLE_COLUMNS)
     rows = []
     for _, row in df.iterrows():
         cells = []
-        for key, _, css in TABLE_COLUMNS:
-            val = display_value(row.get(key, "-"))
-            if key == "status": cells.append(f"<td class='{css} status'>{html.escape(val)}</td>")
-            elif key in ("nrp", "tanggal", "tgl_in", "tgl_out"): cells.append(f"<td class='{css} center'>{html.escape(val)}</td>")
-            else: cells.append(f"<td class='{css}'>{html.escape(val)}</td>")
+        for key, _, css_class in TABLE_COLUMNS:
+            value = display_value(row.get(key, "-"))
+            if key == "status": cell = f"<td class='{css_class} status'>{html.escape(value)}</td>"
+            elif key in ("nrp", "tanggal", "tgl_in", "tgl_out"): cell = f"<td class='{css_class} center'>{html.escape(value)}</td>"
+            else: cell = f"<td class='{css_class}'>{html.escape(value)}</td>"
+            cells.append(cell)
         rows.append("<tr>" + "".join(cells) + "</tr>")
-    st.markdown(f"""<div class="table-wrapper"><table class="oams-table"><thead><tr>{header}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>""", unsafe_allow_html=True)
+
+    table_html = f"""<div class="table-wrapper"><table class="oams-table"><thead><tr>{header}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"""
+    st.markdown(table_html, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 4. SIDEBAR
+# 5. SIDEBAR
 # -----------------------------------------------------------------------------
-st.sidebar.title("🔐 OAMS System")
+st.sidebar.title("ðŸ” OAMS System")
 role = st.sidebar.radio("Akses Sebagai:", ["User (Read-Only)", "Admin"])
 is_admin = False
+
 if role == "Admin":
-    if st.sidebar.text_input("Masukkan PIN Admin:", type="password") == "1234":
+    password = st.sidebar.text_input("Masukkan PIN Admin:", type="password")
+    if password == "1234":
         is_admin = True
-        st.sidebar.success("✅ Akses Admin Aktif")
+        st.sidebar.success("âœ… Akses Admin Aktif")
+    elif password:
+        st.sidebar.error("âŒ Password Salah!")
+
 st.sidebar.markdown("---")
-menu = st.sidebar.radio("Menu Utama", ["Dashboard & Input", "History & Pencarian"] if is_admin else ["History & Pencarian"])
+menu_options = ["Dashboard & Input", "History & Pencarian"] if is_admin else ["History & Pencarian"]
+menu = st.sidebar.radio("Menu Utama", menu_options)
 
 # -----------------------------------------------------------------------------
-# 5. DASHBOARD & INPUT ADMIN
+# 6. DASHBOARD & INPUT ADMIN
 # -----------------------------------------------------------------------------
 if menu == "Dashboard & Input" and is_admin:
-    st.markdown("<h3 style='margin-top:-12px;margin-bottom:7px;'>📊 Dashboard & Kelola Sanksi</h3>", unsafe_allow_html=True)
-    
-    df_stats = get_dashboard_stats()
-    total_data = len(df_stats)
-    sc = df_stats["sanksi"].value_counts() if not df_stats.empty else pd.Series()
-    
+
+    st.markdown("<h3 style='margin-top:-12px;margin-bottom:7px;'>ðŸ“Š Dashboard & Kelola Sanksi</h3>", unsafe_allow_html=True)
+
+    df_all = load_all_sanksi()
+
+    # KARTU STATISTIK
+    total_data = len(df_all) if not df_all.empty else 0
+    if not df_all.empty and "sanksi" in df_all.columns:
+        pk_count = int((df_all["sanksi"] == "PERSONAL KONTAK").sum())
+        pt_count = int((df_all["sanksi"] == "PERINGATAN TERTULIS").sum())
+        sp1_count = int((df_all["sanksi"] == "SP1").sum())
+        sp2_count = int((df_all["sanksi"] == "SP2").sum())
+        sp3_count = int((df_all["sanksi"] == "SP3").sum())
+        sppt_count = int((df_all["sanksi"] == "SP PERTAMA & TERAKHIR").sum())
+        hc_count = int((df_all["sanksi"] == "DIKEMBALIKAN KE HC").sum())
+    else:
+        pk_count = pt_count = sp1_count = sp2_count = sp3_count = sppt_count = hc_count = 0
+
     stats = [
-        ("Total Sanksi", total_data), ("Personal Kontak", sc.get("PERSONAL KONTAK", 0)),
-        ("Peringatan Tertulis", sc.get("PERINGATAN TERTULIS", 0)), ("SP 1", sc.get("SP1", 0)),
-        ("SP 2", sc.get("SP2", 0)), ("SP 3", sc.get("SP3", 0)),
-        ("SP Pertama & Terakhir", sc.get("SP PERTAMA & TERAKHIR", 0)), ("Dikembalikan HC", sc.get("DIKEMBALIKAN KE HC", 0))
+        ("Total Sanksi", total_data), ("Personal Kontak", pk_count),
+        ("Peringatan Tertulis", pt_count), ("SP 1", sp1_count),
+        ("SP 2", sp2_count), ("SP 3", sp3_count),
+        ("SP Pertama & Terakhir", sppt_count), ("Dikembalikan HC", hc_count),
     ]
-    cards = "".join(f"<div class='stat-card'><div class='stat-label'>{html.escape(l)}</div><div class='stat-value'>{v}</div></div>" for l, v in stats)
-    st.markdown(f"<div class='stats-row'>{cards}</div><hr style='margin:7px 0px;'>", unsafe_allow_html=True)
+    cards = "".join(f"<div class='stat-card'><div class='stat-label'>{html.escape(label)}</div><div class='stat-value'>{value}</div></div>" for label, value in stats)
+    st.markdown(f"<div class='stats-row'>{cards}</div>", unsafe_allow_html=True)
+    st.markdown("<hr style='margin:7px 0px;'>", unsafe_allow_html=True)
 
-    st.markdown("<h4 style='margin-bottom:7px;'>📝 Form Input Sanksi</h4>", unsafe_allow_html=True)
-    tab_manual, tab_excel = st.tabs(["📝 Input Manual", "📂 Upload Excel (SBook1.xlsx)"])
+    # -------------------------------------------------------------------------
+    # TABS & FORM
+    # -------------------------------------------------------------------------
+    st.markdown("<h4 style='margin-bottom:7px;'>ðŸ“ Form Input Sanksi</h4>", unsafe_allow_html=True)
+    tab_manual, tab_excel = st.tabs(["ðŸ“ Input Manual", "ðŸ“‚ Upload Excel (SBook1.xlsx)"])
 
+    # TAB 1: INPUT MANUAL
     with tab_manual:
-        if "fv" not in st.session_state: st.session_state.fv = 0
-        fv = st.session_state.fv
-        def fill_nama(): st.session_state[f"n_{fv}"] = MASTER_KARYAWAN.get(str(st.session_state.get(f"nrp_{fv}", "")).strip(), "")
+        if "input_form_version" not in st.session_state: st.session_state.input_form_version = 0
+        form_version = st.session_state.input_form_version
+
+        def auto_fill_nama():
+            nrp_key = f"input_nrp_{form_version}"
+            nama_key = f"input_nama_{form_version}"
+            typed_nrp = str(st.session_state.get(nrp_key, "")).strip()
+            st.session_state[nama_key] = MASTER_KARYAWAN.get(typed_nrp, "")
 
         with st.container(border=True):
-            c1, c2 = st.columns(2)
-            with c1:
-                tgl = st.date_input("Tanggal Input", key=f"t_{fv}")
-                nrp = st.text_input("NRP", key=f"nrp_{fv}", on_change=fill_nama)
-                nama = st.text_input("Nama", key=f"n_{fv}")
-                sel_psl = st.selectbox("Pasal", [""] + LIST_PASAL + ["+ Baru..."], key=f"psl_{fv}")
-                pasal = st.text_input("Ketik Baru", key=f"pb_{fv}") if sel_psl == "+ Baru..." else sel_psl
-                sanksi = st.selectbox("Sanksi", ["PERSONAL KONTAK", "PERINGATAN TERTULIS", "SP1", "SP2", "SP3", "SP PERTAMA & TERAKHIR", "DIKEMBALIKAN KE HC"], key=f"s_{fv}")
-                tgl_in = st.date_input("Tanggal IN", key=f"in_{fv}")
-            with c2:
-                tgl_out = st.date_input("Tanggal OUT", key=f"out_{fv}")
-                tambahan = st.text_input("Tambahan", key=f"tmb_{fv}")
-                plg = st.text_area("Pelanggaran", key=f"p_{fv}")
-                sel_pic = st.selectbox("PIC", [""] + LIST_PIC + ["+ Baru..."], key=f"pic_{fv}")
-                pic = st.text_input("PIC Baru", key=f"picb_{fv}") if sel_pic == "+ Baru..." else sel_pic
-                ket = st.text_input("Keterangan", key=f"k_{fv}")
+            col_f1, col_f2 = st.columns(2)
+            with col_f1:
+                tgl = st.date_input("Tanggal Input", date.today(), key=f"input_tanggal_{form_version}")
+                nrp = st.text_input("NRP Karyawan", key=f"input_nrp_{form_version}", on_change=auto_fill_nama, placeholder="Ketik NRP lalu tekan Enter...")
+                nama = st.text_input("Nama Karyawan", key=f"input_nama_{form_version}", placeholder="Terisi otomatis jika NRP ada di master...")
+                pasal_options = [""] + LIST_PASAL + ["+ Ketik Pasal Baru..."]
+                selected_pasal = st.selectbox("Pasal Pelanggaran", options=pasal_options, key=f"input_selected_pasal_{form_version}")
+                pasal = st.text_input("Ketik Pasal Baru", key=f"input_pasal_baru_{form_version}") if selected_pasal == "+ Ketik Pasal Baru..." else selected_pasal
+                sanksi = st.selectbox("Jenis Sanksi", ["PERSONAL KONTAK", "PERINGATAN TERTULIS", "SP1", "SP2", "SP3", "SP PERTAMA & TERAKHIR", "DIKEMBALIKAN KE HC"], key=f"input_sanksi_{form_version}")
+                tgl_in = st.date_input("Tanggal IN (Mulai Sanksi)", date.today(), key=f"input_tgl_in_{form_version}")
+            with col_f2:
+                tgl_out = st.date_input("Tanggal OUT (Selesai Sanksi)", date.today(), key=f"input_tgl_out_{form_version}")
+                sanksi_tambahan = st.text_input("Sanksi Tambahan", placeholder="Opsional", key=f"input_tambahan_{form_version}")
+                pelanggaran = st.text_area("Uraian Pelanggaran", key=f"input_pelanggaran_{form_version}")
+                pic_options = [""] + LIST_PIC + ["+ Ketik PIC Baru..."]
+                selected_pic = st.selectbox("PIC / Atasan", options=pic_options, key=f"input_selected_pic_{form_version}")
+                pic = st.text_input("Ketik PIC Baru", key=f"input_pic_baru_{form_version}") if selected_pic == "+ Ketik PIC Baru..." else selected_pic
+                ket = st.text_input("Keterangan Tambahan", key=f"input_keterangan_{form_version}")
 
-            if st.button("💾 Simpan", type="primary", use_container_width=True):
-                if not nrp or not nama: st.error("NRP dan Nama wajib!"); st.stop()
-                if not plg: st.error("Pelanggaran wajib!"); st.stop()
-                
-                dup = supabase.table("sanksi").select("id").eq("nrp", nrp).eq("sanksi", sanksi).eq("tgl_in", str(tgl_in)).execute()
-                if len(dup.data) > 0: st.error("⚠️ Data sudah ada di sistem!"); st.stop()
+            if st.button("ðŸ’¾ Simpan Data Sanksi", type="primary", use_container_width=True, key=f"save_button_{form_version}"):
+                if not nrp.strip() or not nama.strip(): st.error("âŒ NRP dan Nama Karyawan wajib diisi!"); st.stop()
+                if not str(pelanggaran).strip(): st.error("âŒ Uraian Pelanggaran wajib diisi!"); st.stop()
+                if check_duplicate_manual(df_all, nrp=nrp, sanksi=sanksi, tgl_in=tgl_in, pelanggaran=pelanggaran):
+                    st.error("âš ï¸ Data sudah ada! NRP, Jenis Sanksi, Tanggal IN, dan Uraian Pelanggaran sama dengan data yang tersimpan.")
+                    st.stop()
 
-                payload = {"tanggal": str(tgl), "nrp": nrp, "nama": nama, "pasal": pasal, "sanksi": sanksi, "tgl_in": str(tgl_in), "tgl_out": str(tgl_out), "sanksi_tambahan": tambahan, "pelanggaran": plg, "pic": pic, "keterangan": ket}
-                supabase.table("sanksi").insert(payload).execute()
-                
-                if nrp not in MASTER_KARYAWAN: supabase.table("master_karyawan").insert({"nrp": nrp, "nama": nama}).execute()
+                payload = {
+                    "tanggal": str(tgl), "nrp": nrp.strip(), "nama": nama.strip(),
+                    "pasal": str(pasal).strip(), "sanksi": sanksi, "tgl_in": str(tgl_in),
+                    "tgl_out": str(tgl_out), "sanksi_tambahan": str(sanksi_tambahan).strip(),
+                    "pelanggaran": str(pelanggaran).strip(), "pic": str(pic).strip(), "keterangan": str(ket).strip(),
+                }
+                try:
+                    supabase.table("sanksi").insert(payload).execute()
+                    if nrp.strip() not in MASTER_KARYAWAN: supabase.table("master_karyawan").insert({"nrp": nrp.strip(), "nama": nama.strip()}).execute()
+                    if selected_pasal == "+ Ketik Pasal Baru..." and str(pasal).strip(): supabase.table("master_pasal").insert({"pasal": str(pasal).strip()}).execute()
+                    if selected_pic == "+ Ketik PIC Baru..." and str(pic).strip(): supabase.table("master_pic").insert({"nama_pic": str(pic).strip()}).execute()
+                except Exception as e:
+                    st.error(f"âŒ Gagal menyimpan data: {e}"); st.stop()
+
                 st.cache_data.clear()
-                st.session_state.fv += 1
+                st.session_state.input_form_version += 1
+                st.toast(f"âœ… Berhasil menyimpan sanksi untuk {nama.strip()}!", icon="âœ…")
                 st.rerun()
 
+    # TAB 2: UPLOAD EXCEL (BULK INSERT + ANIMASI LOADING)
     with tab_excel:
         with st.container(border=True):
-            file = st.file_uploader("Upload Excel", type=["xlsx", "xls"])
-            if file and st.button("🚀 Proses Semua Data", type="primary", use_container_width=True):
-                df_up = pd.read_excel(file)
-                with st.spinner(f"Memproses {len(df_up)} baris..."):
-                    exist = { (r['nrp'], r['sanksi'], r['tgl_in']) for r in supabase.table("sanksi").select("nrp,sanksi,tgl_in").execute().data }
-                    pl, sc, ec, dc = [], 0, 0, 0
-                    for _, row in df_up.iterrows():
-                        r_nrp = clean_excel_text(row.get('NRP'))
-                        if not r_nrp or r_nrp == 'nan': ec += 1; continue
-                        
-                        r_in = parse_date(row.get('AWAL'))
-                        r_sanksi = clean_excel_text(row.get('JENIS SANKSI')).upper().replace("SP ", "SP")
-                        
-                        if (r_nrp, r_sanksi, str(r_in)) in exist: dc += 1; continue
-                        exist.add((r_nrp, r_sanksi, str(r_in)))
+            st.markdown("Unggah file Excel (`SBook1.xlsx`). Sistem otomatis mengambil **Nama** dari database web (Master) jika NRP cocok. **Batas hingga puluhan ribu baris!**")
+            uploaded_file = st.file_uploader("Upload File Excel", type=["xlsx", "xls"])
+            
+            if uploaded_file is not None:
+                try:
+                    df_upload = pd.read_excel(uploaded_file)
+                    total_excel_rows = len(df_upload)
+                    st.write(f"ðŸ“Š **Total baris terbaca dalam file:** `{total_excel_rows}` baris")
 
-                        pl.append({
-                            "tanggal": str(parse_date(row.get('TANGGAL'))), "nrp": r_nrp, 
-                            "nama": MASTER_KARYAWAN.get(r_nrp, clean_excel_text(row.get('NAMA'))),
-                            "pasal": clean_excel_text(row.get('PASAL')), "sanksi": r_sanksi, 
-                            "tgl_in": str(r_in), "tgl_out": str(parse_date(row.get('AKHIR'))), 
-                            "sanksi_tambahan": clean_excel_text(row.get('SANKSI TAMBAHAN')),
-                            "pelanggaran": clean_excel_text(row.get('PELANGGARAN')), 
-                            "pic": clean_excel_text(row.get('PIC')), "keterangan": clean_excel_text(row.get('KETERANGAN'))
-                        })
-                    
-                    if pl:
-                        for i in range(0, len(pl), 1000): supabase.table("sanksi").insert(pl[i:i+1000]).execute()
-                    
-                    st.success(f"✅ Upload Selesai! Berhasil: {len(pl)} | Duplikat: {dc} | Error: {ec}")
-                    st.cache_data.clear()
+                    if st.button("ðŸš€ Proses & Unggah Semua Data", type="primary", use_container_width=True):
+                        with st.spinner(f"Memproses {total_excel_rows} baris... Mohon tunggu!"):
+                            # 1. Siapkan Set Duplikat Super Cepat (O(1) Search)
+                            existing_set = set()
+                            if not df_all.empty:
+                                for _, r in df_all.iterrows():
+                                    k = (
+                                        normalize_text(r.get('nrp')),
+                                        normalize_text(r.get('sanksi')),
+                                        parse_date(r.get('tgl_in')).isoformat(),
+                                        normalize_text(r.get('pelanggaran'))
+                                    )
+                                    existing_set.add(k)
 
-    st.markdown("---")
-    with st.expander("⚠️ Hapus Semua Data", expanded=False):
-        if st.text_input("Sandi khusus:", type="password") == "hapus" and st.button("🔴 KONFIRMASI HAPUS", type="primary"):
-            supabase.table("sanksi").delete().neq("nrp", "DUMMY").execute()
-            st.cache_data.clear()
-            st.rerun()
+                            success_count = 0
+                            error_count = 0
+                            duplicate_count = 0
+                            
+                            payloads_to_insert = []
+                            new_karyawan_to_insert = []
+                            new_pasal_to_insert = []
+                            new_pic_to_insert = []
 
-    st.markdown("<h4>📋 10 Record Terbaru</h4>", unsafe_allow_html=True)
-    df_recent = get_latest_records(10)
-    if not df_recent.empty: df_recent["status"] = df_recent["tgl_out"].apply(calculate_status)
-    render_html_table(df_recent)
+                            progress_bar = st.progress(0, text="Mengumpulkan data valid...")
 
-# -----------------------------------------------------------------------------
-# 6. HISTORY & PENCARIAN
-# -----------------------------------------------------------------------------
-elif menu == "History & Pencarian":
-    st.markdown("<h3 style='margin-top:-12px;margin-bottom:7px;'>🔍 History & Pencarian Sanksi</h3>", unsafe_allow_html=True)
-    
-    q = str(st.text_input("🔎 Cari NRP / Nama:")).strip()
-    df_disp = search_sanksi_db(q)
-    
-    if not df_disp.empty:
-        df_disp["status"] = df_disp["tgl_out"].apply(calculate_status)
-        st.markdown(f"<div class='table-info'>Menampilkan <b>{len(df_disp)}</b> data (Gunakan kolom pencarian untuk data spesifik)</div>", unsafe_allow_html=True)
-        render_html_table(df_disp)
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("📥 Unduh Seluruh Database ke Excel (Proses lambat)"):
-            with st.spinner("Mengunduh ribuan data dari server, mohon tunggu..."):
-                all_df = pd.DataFrame(fetch_all_data("sanksi"))
-                if not all_df.empty:
-                    all_df["status"] = all_df["tgl_out"].apply(calculate_status)
-                    buf = io.BytesIO()
-                    with pd.ExcelWriter(buf, engine="openpyxl") as w:
-                        cols = [c for c in ["tanggal", "nrp", "nama", "pasal", "sanksi", "tgl_in", "tgl_out", "status", "sanksi_tambahan", "pelanggaran", "pic", "keterangan"] if c in all_df.columns]
-                        all_df[cols].to_excel(w, index=False)
-                    st.download_button("✅ Klik Disini Menyimpan File Excel", buf.getvalue(), "Data_Sanksi.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    else:
-        st.info("Data tidak ditemukan.")
-
-    if is_admin and not df_disp.empty:
-        st.markdown("---")
-        st.subheader("🛠️ Edit / Hapus Data")
-        if q:
-            for _, r in df_disp.iterrows():
-                tid = r.get("id")
-                with st.container(border=True):
-                    c_i, c_e, c_d = st.columns([6, 2, 2])
-                    c_i.markdown(f"**NRP:** {r.get('nrp')} - **{r.get('nama')}** | **[{r.get('sanksi')}]**")
-                    with c_e:
-                        with st.popover("✏️ Edit", use_container_width=True):
-                            with st.form(f"e_{tid}"):
-                                n = st.text_input("Nama", r.get('nama'))
-                                if st.form_submit_button("Simpan"): 
-                                    supabase.table("sanksi").update({"nama": n}).eq("id", tid).execute()
-                                    st.cache_data.clear(); st.rerun()
-                    with c_d:
-                        if st.button("🗑️ Hapus", key=f"d_{tid}", type="primary", use_container_width=True):
-                            supabase.table("sanksi").delete().eq("id", tid).execute()
-                            st.cache_data.clear(); st.rerun()
-        else:
-            st.info("💡 Ketik NRP/Nama di kolom pencarian atas untuk memunculkan tombol Edit & Hapus.")
-ama", r.get('nama'))
-                                if st.form_submit_button("Simpan"): 
-                                    supabase.table("sanksi").update({"nama": n}).eq("id", tid).execute()
-                                    st.cache_data.clear(); st.rerun()
-                    with c_d:
-                        if st.button(" Hapus", key=f"d_{tid}", type="primary", use_container_width=True):
-                            supabase.table("sanksi").delete().eq("id", tid).execute()
-                            st.cache_data.clear(); st.rerun()
-        else:
-            st.info(" Ketik NRP/Nama di kolom pencarian atas untuk memunculkan tombol Edit & Hapus.")k NRP/Nama di kolom pencarian atas untuk memunculkan tombol Edit & Hapus.")ows():
+                            for index, row in df_upload.iterrows():
                                 raw_nrp = clean_excel_text(row.get('NRP'))
                                 if not raw_nrp or raw_nrp.lower() == 'nan':
                                     error_count += 1
@@ -393,11 +427,11 @@ ama", r.get('nama'))
                                             supabase.table("master_pic").insert(remove_duplicate_dicts(new_pic_to_insert[i:i+chunk_size], "nama_pic")).execute()
                                 except: pass # Abaikan error master
 
-                            st.success(f"✅ Upload Selesai! Berhasil: **{success_count} baris** | Duplikat dilewati: **{duplicate_count} baris** | Error/Baris Kosong: **{error_count} baris**")
+                            st.success(f"âœ… Upload Selesai! Berhasil: **{success_count} baris** | Duplikat dilewati: **{duplicate_count} baris** | Error/Baris Kosong: **{error_count} baris**")
                             st.balloons()
                             st.cache_data.clear()
                             
-                            if st.button("🔄 Klik Disini Untuk Segarkan Dashboard"):
+                            if st.button("ðŸ”„ Klik Disini Untuk Segarkan Dashboard"):
                                 st.rerun()
 
                 except Exception as e:
@@ -407,25 +441,25 @@ ama", r.get('nama'))
     # HAPUS SEMUA DATA (DANGER ZONE)
     # -------------------------------------------------------------------------
     st.markdown("---")
-    with st.expander("⚠️ Hapus Semua Data Sanksi (DANGER ZONE)", expanded=False):
+    with st.expander("âš ï¸ Hapus Semua Data Sanksi (DANGER ZONE)", expanded=False):
         st.warning("PERINGATAN: Tindakan ini akan menghapus SELURUH data sanksi di database dan tidak dapat dibatalkan!")
         del_pass = st.text_input("Ketik sandi khusus untuk melanjutkan:", type="password", key="delete_all_pass")
         if del_pass == "hapus":
-            if st.button("🔴 KONFIRMASI HAPUS SEMUA DATA", type="primary", use_container_width=True):
+            if st.button("ðŸ”´ KONFIRMASI HAPUS SEMUA DATA", type="primary", use_container_width=True):
                 with st.spinner("Sedang menghapus data... Mohon tunggu."):
                     try:
                         # Menggunakan logic neq dummy value untuk menghapus seluruh row dalam tabel
                         supabase.table("sanksi").delete().neq("nrp", "DUMMY_XXX_123").execute()
-                        st.success("✅ Seluruh data sanksi berhasil dikosongkan!")
+                        st.success("âœ… Seluruh data sanksi berhasil dikosongkan!")
                         st.cache_data.clear()
                         st.rerun()
                     except Exception as e:
-                        st.error(f"❌ Gagal menghapus: {e}")
+                        st.error(f"âŒ Gagal menghapus: {e}")
 
     # -------------------------------------------------------------------------
     # RECORD TERBARU
     # -------------------------------------------------------------------------
-    st.markdown("<h4 style='margin-top:10px;margin-bottom:4px;'>📋 10 Record Terbaru</h4>", unsafe_allow_html=True)
+    st.markdown("<h4 style='margin-top:10px;margin-bottom:4px;'>ðŸ“‹ 10 Record Terbaru</h4>", unsafe_allow_html=True)
     if not df_all.empty:
         df_dash = df_all.sort_values(by="id", ascending=False).head(10) if "id" in df_all.columns else df_all.head(10)
         df_dash = df_dash.copy()
@@ -438,12 +472,12 @@ ama", r.get('nama'))
 # 7. HISTORY & PENCARIAN
 # -----------------------------------------------------------------------------
 elif menu == "History & Pencarian":
-    st.markdown("<h3 style='margin-top:-12px;margin-bottom:7px;'>🔍 History & Pencarian Sanksi</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='margin-top:-12px;margin-bottom:7px;'>ðŸ” History & Pencarian Sanksi</h3>", unsafe_allow_html=True)
     df = load_all_sanksi()
 
     if not df.empty:
-        df["status"] = df["tgl_out"].apply(calculate_status) if "tgl_out" in df.columns else "⚪ NON-AKTIF"
-        search_query = st.text_input("🔎 Cari berdasarkan NRP atau Nama Karyawan:", placeholder="Ketik nama atau NRP...")
+        df["status"] = df["tgl_out"].apply(calculate_status) if "tgl_out" in df.columns else "âšª NON-AKTIF"
+        search_query = st.text_input("ðŸ”Ž Cari berdasarkan NRP atau Nama Karyawan:", placeholder="Ketik nama atau NRP...")
         
         if search_query:
             q = str(search_query).strip()
@@ -467,7 +501,7 @@ elif menu == "History & Pencarian":
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             df_sorted[avail_excel].to_excel(writer, index=False, sheet_name="Data Sanksi")
-        st.download_button(label="📥 Download Data Terupdate ke Excel", data=buffer.getvalue(), file_name=f"Data_Sanksi_{date.today()}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+        st.download_button(label="ðŸ“¥ Download Data Terupdate ke Excel", data=buffer.getvalue(), file_name=f"Data_Sanksi_{date.today()}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
         
         st.markdown("<div style='height:5px'></div>", unsafe_allow_html=True)
         render_html_table(df_display)
@@ -475,8 +509,8 @@ elif menu == "History & Pencarian":
         # PANEL EDIT / HAPUS PER DATA
         if is_admin:
             st.markdown("---")
-            st.subheader("🛠️ Panel Edit / Hapus Per Data")
-            search_admin = st.text_input("🔎 Ketik NRP / Nama Karyawan untuk Edit / Hapus:", placeholder="Contoh: 0211002", key="search_admin_input")
+            st.subheader("ðŸ› ï¸ Panel Edit / Hapus Per Data")
+            search_admin = st.text_input("ðŸ”Ž Ketik NRP / Nama Karyawan untuk Edit / Hapus:", placeholder="Contoh: 0211002", key="search_admin_input")
 
             if search_admin:
                 q_admin = str(search_admin).strip()
@@ -498,9 +532,9 @@ elif menu == "History & Pencarian":
                         with st.container(border=True):
                             c_info, c_btn_edit, c_btn_del = st.columns([6, 2, 2])
                             with c_info:
-                                st.markdown(f"**📅 {html.escape(t_tgl)}** | **NRP:** {html.escape(t_nrp)} - **{html.escape(t_nama)}** | **[{html.escape(t_sanksi)}]** `{html.escape(t_status)}`  \n<small>Pasal: {html.escape(t_pasal)} | PIC: {html.escape(display_value(row_target.get('pic')))}</small>", unsafe_allow_html=True)
+                                st.markdown(f"**ðŸ“… {html.escape(t_tgl)}** | **NRP:** {html.escape(t_nrp)} - **{html.escape(t_nama)}** | **[{html.escape(t_sanksi)}]** `{html.escape(t_status)}`  \n<small>Pasal: {html.escape(t_pasal)} | PIC: {html.escape(display_value(row_target.get('pic')))}</small>", unsafe_allow_html=True)
                             with c_btn_edit:
-                                with st.popover("✏️ Edit", use_container_width=True):
+                                with st.popover("âœï¸ Edit", use_container_width=True):
                                     with st.form(f"edit_{target_id}"):
                                         e_tgl = st.date_input("Tanggal Input", parse_date(row_target.get("tanggal")))
                                         e_nrp = st.text_input("NRP", value=str(row_target.get("nrp", "")))
@@ -516,9 +550,9 @@ elif menu == "History & Pencarian":
                                         e_pic = st.text_input("PIC / Atasan", value=str(row_target.get("pic", "") or ""))
                                         e_ket = st.text_input("Keterangan", value=str(row_target.get("keterangan", "") or ""))
 
-                                        if st.form_submit_button("💾 Simpan Perubahan", type="primary", use_container_width=True):
+                                        if st.form_submit_button("ðŸ’¾ Simpan Perubahan", type="primary", use_container_width=True):
                                             if check_duplicate_manual(df, nrp=e_nrp, sanksi=e_sanksi, tgl_in=e_tgl_in, pelanggaran=e_pelanggaran, exclude_id=target_id):
-                                                st.error("⚠️ Data duplikat!")
+                                                st.error("âš ï¸ Data duplikat!")
                                             else:
                                                 upd_payload = {
                                                     "tanggal": str(e_tgl), "nrp": e_nrp.strip(), "nama": e_nama.strip(),
@@ -528,21 +562,21 @@ elif menu == "History & Pencarian":
                                                 }
                                                 try:
                                                     supabase.table("sanksi").update(upd_payload).eq("id", target_id).execute()
-                                                    st.toast("✅ Data diperbarui!", icon="✅")
+                                                    st.toast("âœ… Data diperbarui!", icon="âœ…")
                                                     st.rerun()
                                                 except Exception as e:
-                                                    st.error(f"❌ Gagal update: {e}")
+                                                    st.error(f"âŒ Gagal update: {e}")
                             with c_btn_del:
-                                with st.popover("🗑️ Hapus", use_container_width=True):
+                                with st.popover("ðŸ—‘ï¸ Hapus", use_container_width=True):
                                     st.warning(f"Hapus permanen sanksi **{t_nama}**?")
-                                    if st.button("🔴 Ya, Hapus", key=f"del_{target_id}", type="primary", use_container_width=True):
+                                    if st.button("ðŸ”´ Ya, Hapus", key=f"del_{target_id}", type="primary", use_container_width=True):
                                         try:
                                             supabase.table("sanksi").delete().eq("id", target_id).execute()
-                                            st.toast("🗑️ Data dihapus!", icon="🗑️")
+                                            st.toast("ðŸ—‘ï¸ Data dihapus!", icon="ðŸ—‘ï¸")
                                             st.rerun()
                                         except Exception as e:
-                                            st.error(f"❌ Gagal: {e}")
+                                            st.error(f"âŒ Gagal: {e}")
             else:
-                st.info("💡 Masukkan NRP atau Nama Karyawan di atas untuk opsi edit dan hapus secara individu.")
+                st.info("ðŸ’¡ Masukkan NRP atau Nama Karyawan di atas untuk opsi edit dan hapus secara individu.")
     else:
-        st.info("Belum ada data sanksi.")")
+        st.info("Belum ada data sanksi.")
